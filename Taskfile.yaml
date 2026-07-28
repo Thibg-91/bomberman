@@ -1,0 +1,27 @@
+version: "3"
+
+vars:
+  BUILD_TYPE: Release
+
+tasks:
+  install:
+    desc: "Installe les dépendances Conan"
+    cmds:
+      - conan install . --build=missing -s build_type={{.BUILD_TYPE}}
+
+  build:
+    desc: "Compile le projet via Conan"
+    cmds:
+      - conan build .
+
+  export-pkg:
+    desc: "Exporte le package Conan après build"
+    cmds:
+      - conan export-pkg . --build=missing -s build_type={{.BUILD_TYPE}}
+
+  all:
+    desc: "install + build + export-pkg en séquence"
+    cmds:
+      - task: install
+      - task: build
+      - task: export-pkg
