@@ -7,23 +7,22 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <filesystem>
 
 #include "tile.h"
 
 namespace Bomberman
 {
-
 class Grid
 {
 public:
-    Grid();
     explicit Grid();
 
-   void loadGrid() const;
+   void loadGrid(std::filesystem::path grid_file);
 
 private:
-   std::vector<Bomberman::Tile> columns;
-   std::vector<Bomberman::Tile> lines;
+   std::vector<Bomberman::Tile> _columns;
+   std::vector<Bomberman::Tile> _lines;
 };
 
 } 

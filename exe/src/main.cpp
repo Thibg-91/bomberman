@@ -13,5 +13,6 @@ int main()
 
    std::filesystem::path grid_path = std::string(bomberman_root) + "data/grid/" + "test_grid.json";
    
-   Bomberman::Grid grid = Bomberman::Grid(grid_path);
+   Bomberman::Grid grid = Bomberman::Grid();
+   grid.loadGrid(grid_path);
 }
