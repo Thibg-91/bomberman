@@ -17,7 +17,7 @@ tasks:
   export-pkg:
     desc: "Exporte le package Conan après build"
     cmds:
-      - conan export-pkg . --build=missing -s build_type={{.BUILD_TYPE}}
+      - conan export-pkg .
 
   all:
     desc: "install + build + export-pkg en séquence"
