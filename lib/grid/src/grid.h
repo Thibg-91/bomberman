@@ -7,6 +7,7 @@
 #include <string>
 #include <memory>
 #include <vector>
+#include <filesystem>
 
 #include "tile.h"
 
@@ -17,7 +18,7 @@ class Grid
 {
 public:
     Grid();
-    explicit Grid();
+    explicit Grid(const std::filesystem::path& grid_file);
 
    void loadGrid() const;
 

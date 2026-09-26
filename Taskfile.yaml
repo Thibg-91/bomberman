@@ -17,11 +17,18 @@ tasks:
   export-pkg:
     desc: "Exporte le package Conan après build"
     cmds:
-      - conan export-pkg . --build=missing -s build_type={{.BUILD_TYPE}}
+      - conan export-pkg . -s build_type={{.BUILD_TYPE}}
 
-  all:
+  conan-all:
     desc: "install + build + export-pkg en séquence"
     cmds:
       - task: install
       - task: build
       - task: export-pkg
+
+  consume:
+    desc: "do an install from cache"
+    cmds:
+      - conan install --requires="bomberman/1.0.0" -g VirtualRunEnv -s build_type={{.BUILD_TYPE}} --output-folder="$PROJECT_ROOT/env"
+
+

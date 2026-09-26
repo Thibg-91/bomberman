@@ -11,7 +11,7 @@ int main()
     else
       std::cout << "BOMBERMAN_ROOT n'est pas défini\n";
 
-   std::filesystem::path grid_path = std::string(bomberman_root) + "data/grid/" + "test_grid.json";
-   
+   std::filesystem::path grid_path = std::filesystem::path(bomberman_root ? bomberman_root : ".") / "data" / "grid" / "test_grid.json";
+
    Bomberman::Grid grid = Bomberman::Grid(grid_path);
 }
