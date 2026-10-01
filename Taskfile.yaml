@@ -14,6 +14,11 @@ tasks:
     cmds:
       - conan build .
 
+  test:
+    desc: "Lance les tests unitaires (après build)"
+    cmds:
+      - ctest --test-dir build/{{.BUILD_TYPE}} --output-on-failure
+
   export-pkg:
     desc: "Exporte le package Conan après build"
     cmds:

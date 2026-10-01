@@ -25,10 +25,15 @@ class BombermanConan(ConanFile):
     def requirements(self):
         self.requires("sfml/3.0.2")
 
+    def build_requirements(self):
+        self.test_requires("gtest/1.17.0")
+
     def build(self):
         cmake = CMake(self)
         cmake.configure()
         cmake.build()
+        # Skipped with -c tools.build:skip_test=True
+        cmake.test()
 
     def package(self):
         cmake = CMake(self)
