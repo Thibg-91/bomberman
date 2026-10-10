@@ -19,6 +19,19 @@ tasks:
     cmds:
       - ctest --test-dir build/{{.BUILD_TYPE}} --output-on-failure
 
+  coverage:
+    desc: "Compile avec instrumentation, lance les tests et gÈnËre le rapport (build/{{.BUILD_TYPE}}/coverage)"
+    cmds:
+      - conan install . --build=missing -s build_type={{.BUILD_TYPE}} -o "&:coverage=True"
+      - cmd: python -c "import pathlib; [p.unlink() for p in pathlib.Path('build/{{.BUILD_TYPE}}').rglob('*.gcda')]"
+      - conan build . -s build_type={{.BUILD_TYPE}} -o "&:coverage=True"
+      - python -c "import pathlib; pathlib.Path('build/{{.BUILD_TYPE}}/coverage').mkdir(exist_ok=True)"
+      - >-
+        gcovr --root . --object-directory build/{{.BUILD_TYPE}}
+        --filter "lib/" --exclude-throw-branches
+        --txt --html-details build/{{.BUILD_TYPE}}/coverage/index.html
+        --xml build/{{.BUILD_TYPE}}/coverage/coverage.xml
+
   export-pkg:
     desc: "Exporte le package Conan apr√®s build"
     cmds:
