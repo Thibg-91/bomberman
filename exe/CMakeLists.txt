@@ -1,3 +1,5 @@
-bomberman_add_executable(launcher)
-
-target_link_libraries(bomberman_launcher PRIVATE bomberman_grid)
+bomberman_add_executable(bomberman
+    LINK_LIBRARIES
+        Bomberman::grid
+        Bomberman::render
+)
