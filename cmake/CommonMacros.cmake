@@ -23,6 +23,18 @@ else()
     add_compile_options(-Wall -Wextra)
 endif()
 
+# Code coverage (GCC/Clang): instruments every target of the project so that
+# running the tests produces .gcda files, later turned into a report by
+# gcovr (see `task coverage`).
+option(BOMBERMAN_COVERAGE "Instrument the code for coverage (gcov)" OFF)
+if(BOMBERMAN_COVERAGE)
+    if(MSVC)
+        message(FATAL_ERROR "BOMBERMAN_COVERAGE requires GCC or Clang")
+    endif()
+    add_compile_options(--coverage -O0 -g)
+    add_link_options(--coverage)
+endif()
+
 # Keep all binaries next to each other so executables find their
 # shared libraries at runtime without extra install steps.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

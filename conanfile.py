@@ -1,7 +1,7 @@
 import os
 
 from conan import ConanFile
-from conan.tools.cmake import CMake, cmake_layout
+from conan.tools.cmake import CMake, CMakeToolchain, cmake_layout
 from conan.tools.files import collect_libs, copy
 
 class BombermanConan(ConanFile):
@@ -17,7 +17,21 @@ class BombermanConan(ConanFile):
 
     requires = "nlohmann_json/3.11.3"
 
-    generators = "CMakeToolchain", "CMakeDeps"
+    options = {"coverage": [True, False]}
+    # SFML must be shared: render.dll exports all its symbols, so a static
+    # SFML would be defined both in render.dll and in each consumer.
+    default_options = {"sfml/*:shared": True, "coverage": False}
+
+    generators = "CMakeDeps"
+
+    def generate(self):
+        tc = CMakeToolchain(self)
+        tc.variables["BOMBERMAN_COVERAGE"] = bool(self.options.coverage)
+        tc.generate()
+
+    def package_id(self):
+        # Instrumentation does not change what consumers get.
+        del self.info.options.coverage
 
     def layout(self):
         cmake_layout(self)
