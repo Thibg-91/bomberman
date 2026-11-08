@@ -16,7 +16,8 @@ struct CharacterCommand
     enum class Type
     {
         Move,
-        BreakBlock
+        BreakBlock,
+        PlaceBomb
     };
 
     Type type = Type::Move;
@@ -30,6 +31,11 @@ struct CharacterCommand
     [[nodiscard]] static constexpr CharacterCommand breakBlock() noexcept
     {
         return {Type::BreakBlock, Direction::Down};
+    }
+
+    [[nodiscard]] static constexpr CharacterCommand placeBomb() noexcept
+    {
+        return {Type::PlaceBomb, Direction::Down};
     }
 
     friend constexpr bool operator==(const CharacterCommand& lhs, const CharacterCommand& rhs) noexcept

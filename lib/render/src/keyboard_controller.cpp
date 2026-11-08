@@ -25,6 +25,8 @@ std::optional<CharacterCommand> KeyboardController::commandFor(sf::Keyboard::Key
 {
     if (key == m_bindings.breakBlock)
         return CharacterCommand::breakBlock();
+    if (key == m_bindings.placeBomb)
+        return CharacterCommand::placeBomb();
     if (key == m_bindings.up)
         return CharacterCommand::move(Direction::Up);
     if (key == m_bindings.down)
@@ -38,7 +40,8 @@ std::optional<CharacterCommand> KeyboardController::commandFor(sf::Keyboard::Key
 
 std::optional<CharacterCommand> KeyboardController::poll() const
 {
-    const std::array keys = {m_bindings.breakBlock, m_bindings.up, m_bindings.down, m_bindings.left, m_bindings.right};
+    const std::array keys = {m_bindings.breakBlock, m_bindings.placeBomb, m_bindings.up, m_bindings.down,
+                              m_bindings.left, m_bindings.right};
     for (const sf::Keyboard::Key key : keys)
     {
         if (sf::Keyboard::isKeyPressed(key))

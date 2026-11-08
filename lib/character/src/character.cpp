@@ -39,6 +39,16 @@ float Character::getMoveDuration() const noexcept
     return m_moveDuration;
 }
 
+bool Character::isAlive() const noexcept
+{
+    return m_alive;
+}
+
+void Character::kill() noexcept
+{
+    m_alive = false;
+}
+
 bool Character::isMoving() const noexcept
 {
     return m_moveElapsed < m_moveDuration;
@@ -92,6 +102,10 @@ bool Character::execute(const CharacterCommand& command, Grid& grid) noexcept
         return move(command.direction, grid);
     case CharacterCommand::Type::BreakBlock:
         return breakBlock(grid);
+    case CharacterCommand::Type::PlaceBomb:
+        // Placing a bomb needs a BombManager, which Character does not know
+        // about; callers handle PlaceBomb themselves (see exe/main.cpp).
+        return false;
     }
     return false;
 }

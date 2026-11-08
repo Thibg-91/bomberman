@@ -4,5 +4,6 @@ bomberman_add_library(render
     LINK_LIBRARIES
         Bomberman::grid
         Bomberman::character
+        Bomberman::bomb
         SFML::Graphics
 )

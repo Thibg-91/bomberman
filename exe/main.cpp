@@ -1,9 +1,13 @@
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <vector>
 
 #include <SFML/Graphics.hpp>
 
+#include "bomb_manager.h"
+#include "bomb_renderer.h"
 #include "character.h"
 #include "character_renderer.h"
 #include "grid.h"
@@ -63,13 +67,17 @@ int main(int argc, char* argv[])
     Bomberman::CharacterRenderer playerRenderer(gridRenderer.getTileSize());
     const Bomberman::KeyboardController keyboard;
 
+    Bomberman::BombManager bombManager;
+    std::vector<Bomberman::BombRenderer> bombRenderers;
+
     sf::RenderWindow window(sf::VideoMode(gridRenderer.getPixelSize()), "Bomberman", sf::Style::Titlebar | sf::Style::Close);
     window.setFramerateLimit(60);
 
     sf::Clock clock;
     while (window.isOpen())
     {
-        player.update(clock.restart().asSeconds());
+        const float deltaSeconds = clock.restart().asSeconds();
+        player.update(deltaSeconds);
 
         while (const std::optional event = window.pollEvent())
         {
@@ -83,18 +91,51 @@ int main(int argc, char* argv[])
             }
         }
 
-        if (const auto command = keyboard.poll())
+        if (player.isAlive())
         {
-            // The back (grid) changed: keep the front (renderer) in sync.
-            const bool breaksBlock = command->type == Bomberman::CharacterCommand::Type::BreakBlock;
-            if (player.execute(*command, grid) && breaksBlock)
-                gridRenderer.update(grid);
+            if (const auto command = keyboard.poll())
+            {
+                const Bomberman::Position facedCell = Bomberman::step(player.getPosition(), player.getFacing());
+
+                if (command->type == Bomberman::CharacterCommand::Type::PlaceBomb)
+                {
+                    bombManager.placeBomb(facedCell, grid);
+                }
+                else if (command->type == Bomberman::CharacterCommand::Type::BreakBlock
+                         && bombManager.hasBombAt(facedCell))
+                {
+                    bombManager.pushBombAt(facedCell, player.getFacing(), grid);
+                }
+                else
+                {
+                    // The back (grid) changed: keep the front (renderer) in sync.
+                    const bool breaksBlock = command->type == Bomberman::CharacterCommand::Type::BreakBlock;
+                    if (player.execute(*command, grid) && breaksBlock)
+                        gridRenderer.update(grid);
+                }
+            }
         }
+
+        const std::vector<Bomberman::Position> explodedCells = bombManager.update(deltaSeconds, grid);
+        if (!explodedCells.empty())
+        {
+            gridRenderer.update(grid);
+            if (std::find(explodedCells.begin(), explodedCells.end(), player.getPosition()) != explodedCells.end())
+                player.kill();
+        }
+
         playerRenderer.update(player);
+
+        bombRenderers.assign(bombManager.getBombs().size(), Bomberman::BombRenderer(gridRenderer.getTileSize()));
+        for (std::size_t i = 0; i < bombManager.getBombs().size(); ++i)
+            bombRenderers[i].update(bombManager.getBombs()[i]);
 
         window.clear(sf::Color::Black);
         window.draw(gridRenderer);
-        window.draw(playerRenderer);
+        for (const Bomberman::BombRenderer& bombRenderer : bombRenderers)
+            window.draw(bombRenderer);
+        if (player.isAlive())
+            window.draw(playerRenderer);
         window.display();
     }
 

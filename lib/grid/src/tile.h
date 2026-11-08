@@ -3,20 +3,6 @@
 
 #pragma once
 
-<<<<<<< HEAD
-// TODO: Watch what is needed to keep
-#include <string>
-#include <memory>
-#include <vector>
-
-namespace Bomberman
-{
-enum class TileType
-{
-    Empty,
-    Wall,
-    Bonus
-=======
 namespace Bomberman
 {
 
@@ -27,25 +13,10 @@ enum class TileType
     Empty,
     Wall,             // indestructible
     DestructibleBlock // destroyed by explosions, may hide a bonus later
->>>>>>> de44a3170e30f9e7e48feaaa4d4129d24ee27004
 };
 
 class Tile
 {
-<<<<<<< HEAD
-
-public:
-   Tile(TileType);
-
-private:
-    TileType _type;
-
-};
-
-} 
-
-#endif // TILE_H
-=======
 public:
     // =========================
     // Constructors / Destructor
@@ -80,4 +51,3 @@ private:
 } // namespace Bomberman
 
 #endif // TILE_H
->>>>>>> de44a3170e30f9e7e48feaaa4d4129d24ee27004

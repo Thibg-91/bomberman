@@ -3,39 +3,13 @@
 
 #pragma once
 
-<<<<<<< HEAD
-// TODO: Watch what is needed to keep
-#include <string>
-#include <memory>
-#include <vector>
-#include <filesystem>
-
-=======
 #include <vector>
 
 #include "position.h"
->>>>>>> de44a3170e30f9e7e48feaaa4d4129d24ee27004
 #include "tile.h"
 
 namespace Bomberman
 {
-<<<<<<< HEAD
-class Grid
-{
-public:
-    explicit Grid();
-
-   void loadGrid(std::filesystem::path grid_file);
-
-private:
-   std::vector<Bomberman::Tile> _columns;
-   std::vector<Bomberman::Tile> _lines;
-};
-
-} 
-
-#endif // GRID_H
-=======
 
 // Rectangular board made of tiles, stored row by row.
 // The grid only knows about static content (walls, blocks) and where players
@@ -90,4 +64,3 @@ private:
 } // namespace Bomberman
 
 #endif // GRID_H
->>>>>>> de44a3170e30f9e7e48feaaa4d4129d24ee27004

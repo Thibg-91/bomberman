@@ -36,6 +36,10 @@ public:
     [[nodiscard]] Direction getFacing() const noexcept;
     [[nodiscard]] float getMoveDuration() const noexcept;
 
+    // True until the character is caught in an explosion (see kill()).
+    [[nodiscard]] bool isAlive() const noexcept;
+    void kill() noexcept;
+
     // True while the last move is still being "walked".
     [[nodiscard]] bool isMoving() const noexcept;
     // 0 right after a move, 1 once finished (always 1 when idle).
@@ -65,6 +69,7 @@ private:
     Direction m_facing = Direction::Down;
     float m_moveDuration;
     float m_moveElapsed;
+    bool m_alive = true;
 };
 
 } // namespace Bomberman

@@ -16,6 +16,7 @@ TEST(KeyboardControllerTest, DefaultBindingsAreZqsdAndEnter)
     EXPECT_EQ(keyboard.commandFor(Key::S), CharacterCommand::move(Direction::Down));
     EXPECT_EQ(keyboard.commandFor(Key::D), CharacterCommand::move(Direction::Right));
     EXPECT_EQ(keyboard.commandFor(Key::Enter), CharacterCommand::breakBlock());
+    EXPECT_EQ(keyboard.commandFor(Key::Space), CharacterCommand::placeBomb());
 }
 
 TEST(KeyboardControllerTest, UnboundKeyGivesNoCommand)

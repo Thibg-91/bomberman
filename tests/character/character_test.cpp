@@ -38,6 +38,8 @@ TEST(CharacterCommandTest, Equality)
     EXPECT_NE(CharacterCommand::move(Direction::Up), CharacterCommand::move(Direction::Left));
     EXPECT_NE(CharacterCommand::move(Direction::Up), CharacterCommand::breakBlock());
     EXPECT_EQ(CharacterCommand::breakBlock(), CharacterCommand::breakBlock());
+    EXPECT_EQ(CharacterCommand::placeBomb(), CharacterCommand::placeBomb());
+    EXPECT_NE(CharacterCommand::placeBomb(), CharacterCommand::breakBlock());
 }
 
 TEST(CharacterTest, StartsIdleOnItsSpawn)
@@ -48,6 +50,16 @@ TEST(CharacterTest, StartsIdleOnItsSpawn)
     EXPECT_EQ(character.getPreviousPosition(), (Position{1, 3}));
     EXPECT_FALSE(character.isMoving());
     EXPECT_FLOAT_EQ(character.getMoveProgress(), 1.f);
+    EXPECT_TRUE(character.isAlive());
+}
+
+TEST(CharacterTest, KillMarksTheCharacterAsDead)
+{
+    Character character({1, 3});
+
+    character.kill();
+
+    EXPECT_FALSE(character.isAlive());
 }
 
 TEST(CharacterTest, MovesOneCellInAllDirections)
@@ -211,6 +223,7 @@ TEST(CharacterTest, ExecuteDispatchesCommands)
     EXPECT_FALSE(character.execute(CharacterCommand::move(Direction::Right), grid));
     EXPECT_TRUE(character.execute(CharacterCommand::breakBlock(), grid));
     EXPECT_FALSE(character.execute(CharacterCommand::breakBlock(), grid));
+    EXPECT_FALSE(character.execute(CharacterCommand::placeBomb(), grid));
 }
 
 TEST(CharacterTest, WorksOnTheFirstLevel)
