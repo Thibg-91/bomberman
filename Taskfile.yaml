@@ -7,7 +7,13 @@ tasks:
   install:
     desc: "Installe les dépendances Conan"
     cmds:
+      - task: export-sfml-recipe
       - conan install . --build=missing -s build_type={{.BUILD_TYPE}}
+
+  export-sfml-recipe:
+    desc: "Enregistre notre recette SFML patchée (HiDPI/Retina sur macOS) dans le cache Conan local"
+    cmds:
+      - conan export conan-recipes/sfml --name sfml --version 3.0.2
 
   build:
     desc: "Compile le projet via Conan"
@@ -22,6 +28,7 @@ tasks:
   coverage:
     desc: "Compile avec instrumentation, lance les tests et génère le rapport (build/{{.BUILD_TYPE}}/coverage)"
     cmds:
+      - task: export-sfml-recipe
       - conan install . --build=missing -s build_type={{.BUILD_TYPE}} -o "&:coverage=True"
       - cmd: python -c "import pathlib; [p.unlink() for p in pathlib.Path('build/{{.BUILD_TYPE}}').rglob('*.gcda')]"
       - conan build . -s build_type={{.BUILD_TYPE}} -o "&:coverage=True"
@@ -47,6 +54,7 @@ tasks:
   consume:
     desc: "do an install from cache"
     cmds:
+      - task: export-sfml-recipe
       - conan install --requires="bomberman/1.0.0" -g VirtualRunEnv -s build_type={{.BUILD_TYPE}} --output-folder="$PROJECT_ROOT/env"
 
 

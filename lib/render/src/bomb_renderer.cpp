@@ -18,6 +18,16 @@ sf::Vector2f cellCenter(Position position, float tileSize)
     return {(static_cast<float>(position.x) + 0.5f) * tileSize, (static_cast<float>(position.y) + 0.5f) * tileSize};
 }
 
+float angleDegrees(sf::Vector2f from, sf::Vector2f to)
+{
+    return std::atan2(to.y - from.y, to.x - from.x) * 180.f / 3.14159265f;
+}
+
+float lengthOf(sf::Vector2f from, sf::Vector2f to)
+{
+    return std::hypot(to.x - from.x, to.y - from.y);
+}
+
 } // namespace
 
 // =========================
@@ -31,8 +41,11 @@ BombRenderer::BombRenderer(float tileSize, sf::Color color)
 {
     m_body.setFillColor(color);
     m_body.setOutlineColor(sf::Color::Black);
-    m_body.setOutlineThickness(2.f);
+    m_body.setOutlineThickness(std::max(1.f, tileSize * 0.045f));
     m_body.setOrigin({m_body.getRadius(), m_body.getRadius()});
+
+    m_fuse.setFillColor(sf::Color(90, 58, 30));
+    m_fuse.setOrigin({0.f, tileSize * 0.025f});
 
     m_spark.setFillColor(sf::Color(255, 207, 77));
     m_spark.setOrigin({m_spark.getRadius(), m_spark.getRadius()});
@@ -63,7 +76,11 @@ void BombRenderer::update(const Bomb& bomb)
     const float blinkPhase = std::fmod(elapsed, blinkPeriod);
     const bool sparkVisible = blinkPhase < blinkPeriod * 0.5f;
 
+    const sf::Vector2f fuseBase = m_center + sf::Vector2f(m_body.getRadius() * 0.3f, -m_body.getRadius() * 0.95f);
     const sf::Vector2f fuseTip = m_center + sf::Vector2f(m_body.getRadius() * 0.5f, -m_body.getRadius() * 1.4f);
+    m_fuse.setSize({lengthOf(fuseBase, fuseTip), m_tileSize * 0.05f});
+    m_fuse.setPosition(fuseBase);
+    m_fuse.setRotation(sf::degrees(angleDegrees(fuseBase, fuseTip)));
     m_spark.setPosition(fuseTip);
     sf::Color sparkColor = m_spark.getFillColor();
     sparkColor.a = sparkVisible ? 255 : 60;
@@ -85,6 +102,11 @@ const sf::CircleShape& BombRenderer::getSpark() const noexcept
     return m_spark;
 }
 
+const sf::RectangleShape& BombRenderer::getFuse() const noexcept
+{
+    return m_fuse;
+}
+
 // =========================
 // Private Methods
 // =========================
@@ -92,6 +114,7 @@ void BombRenderer::draw(sf::RenderTarget& target, sf::RenderStates states) const
 {
     states.transform *= getTransform();
     target.draw(m_body, states);
+    target.draw(m_fuse, states);
     target.draw(m_spark, states);
 }
 

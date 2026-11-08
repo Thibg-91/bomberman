@@ -30,6 +30,7 @@ public:
     [[nodiscard]] sf::Vector2f getCenter() const noexcept;
     [[nodiscard]] const sf::CircleShape& getBody() const noexcept;
     [[nodiscard]] const sf::CircleShape& getSpark() const noexcept;
+    [[nodiscard]] const sf::RectangleShape& getFuse() const noexcept;
 
 private:
     // =========================
@@ -43,6 +44,7 @@ private:
     float m_tileSize;
     sf::Vector2f m_center;
     sf::CircleShape m_body;
+    sf::RectangleShape m_fuse;
     sf::CircleShape m_spark;
 };
 
