@@ -24,6 +24,8 @@ class Character
 {
 public:
     static constexpr float DefaultMoveDuration = 0.15f; // seconds per cell
+    // A walk this close (seconds) to its end counts as finished.
+    static constexpr float TimeTolerance = 1e-4f;
 
     // =========================
     // Constructors / Destructor

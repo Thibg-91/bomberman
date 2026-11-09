@@ -3,5 +3,6 @@ bomberman_add_executable(bomberman
         Bomberman::grid
         Bomberman::character
         Bomberman::bomb
+        Bomberman::engine
         Bomberman::render
 )

@@ -16,6 +16,8 @@ class Bomb
 public:
     static constexpr float DefaultFuseDuration = 2.f; // seconds before exploding
     static constexpr int DefaultBlastRadius = 1;       // cells per cross arm
+    // A fuse with less than this left (seconds) has burnt out.
+    static constexpr float TimeTolerance = 1e-4f;
 
     // =========================
     // Constructors / Destructor
