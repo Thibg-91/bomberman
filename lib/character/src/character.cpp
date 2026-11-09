@@ -62,7 +62,13 @@ float Character::getMoveProgress() const noexcept
 void Character::update(float deltaSeconds) noexcept
 {
     if (isMoving() && deltaSeconds > 0.f)
+    {
         m_moveElapsed = std::min(m_moveElapsed + deltaSeconds, m_moveDuration);
+        // Summing fixed ticks (e.g. 10 x 1/60 s) can fall a rounding error
+        // short of moveDuration: the walk must still end on that tick.
+        if (m_moveDuration - m_moveElapsed < TimeTolerance)
+            m_moveElapsed = m_moveDuration;
+    }
 }
 
 bool Character::move(Direction direction, const Grid& grid, const std::vector<Position>& obstacles) noexcept

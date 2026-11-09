@@ -58,7 +58,13 @@ bool Bomb::hasExploded() const noexcept
 void Bomb::update(float deltaSeconds) noexcept
 {
     if (!hasExploded() && deltaSeconds > 0.f)
+    {
         m_timeRemaining = std::max(m_timeRemaining - deltaSeconds, 0.f);
+        // Summing fixed ticks (e.g. 120 x 1/60 s) can leave a rounding error
+        // on the fuse: the bomb must still explode on that tick.
+        if (m_timeRemaining < TimeTolerance)
+            m_timeRemaining = 0.f;
+    }
 }
 
 } // namespace Bomberman

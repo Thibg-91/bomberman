@@ -4,15 +4,15 @@
 #include <filesystem>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
 #include <SFML/Graphics.hpp>
 
-#include "bomb_manager.h"
 #include "bomb_renderer.h"
-#include "character.h"
 #include "character_renderer.h"
+#include "game_engine.h"
 #include "grid.h"
 #include "grid_loader.h"
 #include "grid_renderer.h"
@@ -23,7 +23,6 @@ namespace
 {
 
 constexpr int LevelCount = 4;
-constexpr int PlayerId = 0; // owner id of the player's bombs
 
 // $BOMBERMAN_ROOT/data/grid/level_0N.json (or ./data when BOMBERMAN_ROOT is
 // not defined), N in [1, LevelCount].
@@ -35,14 +34,14 @@ std::filesystem::path levelPath(int index)
 }
 
 // Everything that belongs to one round on one map; rebuilt from scratch when
-// another map is selected.
+// another map is selected. The engine runs the game logic at a fixed tick
+// rate, the renderers only display its state.
 struct Match
 {
-    Bomberman::Grid grid;
+    Bomberman::GameEngine engine;
+    Bomberman::PlayerId player; // the keyboard-controlled character
     Bomberman::GridRenderer gridRenderer;
-    Bomberman::Character player;
     Bomberman::CharacterRenderer playerRenderer;
-    Bomberman::BombManager bombManager;
 };
 
 // Nullptr (and an error on stderr) when the level cannot be used.
@@ -73,12 +72,14 @@ std::unique_ptr<Match> loadMatch(const std::filesystem::path& gridPath, sf::Vect
     const float tileSize = std::min(static_cast<float>(screenSize.x) / static_cast<float>(grid.getWidth()),
                                     static_cast<float>(screenSize.y) / static_cast<float>(grid.getHeight()));
 
-    const Bomberman::Position spawn = grid.getSpawnPoints().front();
-    auto match = std::make_unique<Match>(Match{grid,
-                                               Bomberman::GridRenderer(tileSize, Bomberman::mapThemeFromName(grid.getTheme())),
-                                               Bomberman::Character(spawn), Bomberman::CharacterRenderer(tileSize),
-                                               Bomberman::BombManager()});
-    match->gridRenderer.update(match->grid);
+    const Bomberman::MapTheme theme = Bomberman::mapThemeFromName(grid.getTheme());
+    Bomberman::GameEngine engine(std::move(grid));
+    // Spawns on the first spawn point (checked above, so this cannot fail).
+    const Bomberman::PlayerId player = *engine.addPlayer();
+
+    auto match = std::make_unique<Match>(
+        Match{std::move(engine), player, Bomberman::GridRenderer(tileSize, theme), Bomberman::CharacterRenderer(tileSize)});
+    match->gridRenderer.update(match->engine.getGrid());
     return match;
 }
 
@@ -155,63 +156,54 @@ int main(int argc, char* argv[])
             }
         }
 
-        Bomberman::Grid& grid = match->grid;
-        Bomberman::Character& player = match->player;
-        Bomberman::BombManager& bombManager = match->bombManager;
+        Bomberman::GameEngine& engine = match->engine;
         Bomberman::GridRenderer& gridRenderer = match->gridRenderer;
         Bomberman::CharacterRenderer& playerRenderer = match->playerRenderer;
-
-        player.update(deltaSeconds);
 
         if (turnKeyHeld && !keyboard.isHeld(*turnKeyHeld))
             turnKeyHeld.reset();
 
-        if (player.isAlive())
+        // Input only produces a command; the engine decides at its next tick
+        // whether the player is ready to execute it (actions are paced by
+        // GameRules delays). An AI or a remote player would submit its own
+        // commands the same way with its own id.
+        if (const auto command = keyboard.poll())
         {
-            if (const auto command = keyboard.poll())
-            {
-                const Bomberman::Position facedCell = Bomberman::step(player.getPosition(), player.getFacing());
+            const bool consumedTurn =
+                command->type == Bomberman::CharacterCommand::Type::Move && turnKeyHeld == command->direction;
+            if (!consumedTurn)
+                engine.submitCommand(match->player, *command);
+        }
 
-                if (command->type == Bomberman::CharacterCommand::Type::PlaceBomb)
-                {
-                    // One active bomb per character for now (see
-                    // BombManager::DefaultMaxActiveBombs).
-                    if (bombManager.placeBomb(facedCell, grid, PlayerId))
-                        playerRenderer.triggerBombAnimation();
-                }
-                else if (command->type == Bomberman::CharacterCommand::Type::PushBomb)
-                {
-                    // Does nothing when there is no bomb in front of the
-                    // character: blocks are only destroyed by explosions.
-                    bombManager.pushBombAt(facedCell, player.getFacing(), grid);
-                }
-                else
-                {
-                    if (turnKeyHeld != command->direction)
-                    {
-                        const Bomberman::Direction facingBefore = player.getFacing();
-                        // Bombs block the way like blocks do.
-                        player.execute(*command, grid, bombManager.getBombPositions());
-                        if (player.getFacing() != facingBefore)
-                            turnKeyHeld = command->direction;
-                    }
-                }
+        engine.advance(deltaSeconds);
+
+        for (const Bomberman::GameEvent& event : engine.takeEvents())
+        {
+            switch (event.type)
+            {
+            case Bomberman::GameEvent::Type::PlayerTurned:
+                if (event.playerId == match->player)
+                    turnKeyHeld = engine.getCharacter(match->player).getFacing();
+                break;
+            case Bomberman::GameEvent::Type::BombPlaced:
+                if (event.playerId == match->player)
+                    playerRenderer.triggerBombAnimation();
+                break;
+            case Bomberman::GameEvent::Type::Explosion:
+                gridRenderer.update(engine.getGrid()); // blocks were destroyed
+                break;
+            default:
+                break;
             }
         }
 
-        const std::vector<Bomberman::Position> explodedCells = bombManager.update(deltaSeconds, grid);
-        if (!explodedCells.empty())
-        {
-            gridRenderer.update(grid);
-            if (std::find(explodedCells.begin(), explodedCells.end(), player.getPosition()) != explodedCells.end())
-                player.kill();
-        }
-
+        const Bomberman::Character& player = engine.getCharacter(match->player);
         playerRenderer.update(player, deltaSeconds);
 
-        bombRenderers.assign(bombManager.getBombs().size(), Bomberman::BombRenderer(gridRenderer.getTileSize()));
-        for (std::size_t i = 0; i < bombManager.getBombs().size(); ++i)
-            bombRenderers[i].update(bombManager.getBombs()[i]);
+        const std::vector<Bomberman::Bomb>& bombs = engine.getBombManager().getBombs();
+        bombRenderers.assign(bombs.size(), Bomberman::BombRenderer(gridRenderer.getTileSize()));
+        for (std::size_t i = 0; i < bombs.size(); ++i)
+            bombRenderers[i].update(bombs[i]);
 
         window.clear(sf::Color::Black);
         window.draw(gridRenderer);
