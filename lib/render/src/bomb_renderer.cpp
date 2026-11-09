@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 
+#include "mesh.h"
+
 namespace Bomberman
 {
 
@@ -39,6 +41,9 @@ BombRenderer::BombRenderer(float tileSize, sf::Color color)
       m_body(tileSize * 0.33f),
       m_spark(tileSize * 0.07f)
 {
+    // SFML's default 30 sides look faceted at fullscreen tile sizes.
+    m_body.setPointCount(static_cast<std::size_t>(Mesh::segmentsFor(m_body.getRadius())));
+    m_spark.setPointCount(static_cast<std::size_t>(Mesh::segmentsFor(m_spark.getRadius())));
     m_body.setFillColor(color);
     m_body.setOutlineColor(sf::Color::Black);
     m_body.setOutlineThickness(std::max(1.f, tileSize * 0.045f));

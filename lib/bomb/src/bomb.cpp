@@ -8,8 +8,9 @@ namespace Bomberman
 // =========================
 // Constructors / Destructor
 // =========================
-Bomb::Bomb(Position position, float fuseDuration, int blastRadius) noexcept
+Bomb::Bomb(Position position, float fuseDuration, int blastRadius, int ownerId) noexcept
     : m_position(position),
+      m_ownerId(ownerId),
       m_fuseDuration(std::max(fuseDuration, 0.f)),
       m_timeRemaining(m_fuseDuration),
       m_blastRadius(std::max(blastRadius, 0))
@@ -27,6 +28,11 @@ Position Bomb::getPosition() const noexcept
 void Bomb::setPosition(Position position) noexcept
 {
     m_position = position;
+}
+
+int Bomb::getOwnerId() const noexcept
+{
+    return m_ownerId;
 }
 
 float Bomb::getFuseDuration() const noexcept

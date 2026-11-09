@@ -43,6 +43,21 @@ TEST(GridLoaderTest, ParsesEverySymbol)
     EXPECT_EQ(grid.getSpawnPoints().front(), (Position{1, 1}));
 }
 
+TEST(GridLoaderTest, ReadsOptionalTheme)
+{
+    const Grid themed = GridLoader::loadFromString(R"({"width": 1, "height": 1, "theme": "cave", "rows": ["."]})");
+    const Grid plain = GridLoader::loadFromString(R"({"width": 1, "height": 1, "rows": ["."]})");
+
+    EXPECT_EQ(themed.getTheme(), "cave");
+    EXPECT_TRUE(plain.getTheme().empty());
+}
+
+TEST(GridLoaderTest, RejectsNonStringTheme)
+{
+    EXPECT_THROW((void)GridLoader::loadFromString(R"({"width": 1, "height": 1, "theme": 3, "rows": ["."]})"),
+                 GridLoadError);
+}
+
 // ---------------------------------------------------------------------------
 // Invalid descriptions are rejected with a GridLoadError
 // ---------------------------------------------------------------------------
@@ -154,3 +169,56 @@ TEST_F(FirstLevelTest, SpawnsCanMoveAway)
         EXPECT_GE(freeNeighbours, 2) << "Spawn (" << spawn.x << ", " << spawn.y << ") is trapped";
     }
 }
+
+// ---------------------------------------------------------------------------
+// Rules every shipped level must follow
+// ---------------------------------------------------------------------------
+class ShippedLevelTest : public ::testing::TestWithParam<const char*>
+{
+protected:
+    const Grid m_grid = GridLoader::loadFromFile(DataDir / "grid" / GetParam());
+};
+
+TEST_P(ShippedLevelTest, IsAClassicBoardSurroundedByWalls)
+{
+    ASSERT_EQ(m_grid.getWidth(), Grid::ClassicWidth);
+    ASSERT_EQ(m_grid.getHeight(), Grid::ClassicHeight);
+    for (int x = 0; x < m_grid.getWidth(); ++x)
+    {
+        EXPECT_EQ(m_grid.getTile({x, 0}).getType(), TileType::Wall) << "x=" << x;
+        EXPECT_EQ(m_grid.getTile({x, m_grid.getHeight() - 1}).getType(), TileType::Wall) << "x=" << x;
+    }
+    for (int y = 0; y < m_grid.getHeight(); ++y)
+    {
+        EXPECT_EQ(m_grid.getTile({0, y}).getType(), TileType::Wall) << "y=" << y;
+        EXPECT_EQ(m_grid.getTile({m_grid.getWidth() - 1, y}).getType(), TileType::Wall) << "y=" << y;
+    }
+}
+
+TEST_P(ShippedLevelTest, HasOneSpawnPerCornerThatCanMoveAway)
+{
+    const auto& spawns = m_grid.getSpawnPoints();
+    const int right = m_grid.getWidth() - 2;
+    const int bottom = m_grid.getHeight() - 2;
+
+    ASSERT_EQ(spawns.size(), 4u);
+    for (const Position corner : {Position{1, 1}, Position{right, 1}, Position{1, bottom}, Position{right, bottom}})
+        EXPECT_NE(std::find(spawns.begin(), spawns.end(), corner), spawns.end())
+            << "No spawn at (" << corner.x << ", " << corner.y << ")";
+
+    for (const Position spawn : spawns)
+    {
+        int freeNeighbours = 0;
+        for (const Position offset : {Position{1, 0}, Position{-1, 0}, Position{0, 1}, Position{0, -1}})
+            freeNeighbours += m_grid.isWalkable({spawn.x + offset.x, spawn.y + offset.y}) ? 1 : 0;
+        EXPECT_GE(freeNeighbours, 2) << "Spawn (" << spawn.x << ", " << spawn.y << ") is trapped";
+    }
+}
+
+TEST_P(ShippedLevelTest, DeclaresATheme)
+{
+    EXPECT_FALSE(m_grid.getTheme().empty());
+}
+
+INSTANTIATE_TEST_SUITE_P(AllLevels, ShippedLevelTest,
+                         ::testing::Values("level_01.json", "level_02.json", "level_03.json", "level_04.json"));

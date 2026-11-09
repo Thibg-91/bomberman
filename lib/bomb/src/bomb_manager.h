@@ -21,7 +21,8 @@ namespace Bomberman
 class BombManager
 {
 public:
-    static constexpr int DefaultPushDistance = 1; // cells per punch
+    static constexpr int DefaultPushDistance = 1;    // cells per punch
+    static constexpr int DefaultMaxActiveBombs = 1;  // bombs a character may have on the grid at once
 
     // =========================
     // Public Methods
@@ -30,9 +31,19 @@ public:
 
     [[nodiscard]] bool hasBombAt(Position position) const noexcept;
 
-    // Drops a bomb on position. Fails (returns false) if the cell is not
-    // walkable (wall/destructible block) or already holds a bomb.
-    bool placeBomb(Position position, const Grid& grid);
+    // Bombs dropped by ownerId that have not exploded yet.
+    [[nodiscard]] int countActiveBombs(int ownerId) const noexcept;
+
+    // Cells currently holding a bomb, e.g. the obstacles to give to
+    // Character::move() so characters cannot walk through bombs.
+    [[nodiscard]] std::vector<Position> getBombPositions() const;
+
+    // Drops a bomb owned by ownerId on position. Fails (returns false) if
+    // the cell is not walkable (wall/destructible block), already holds a
+    // bomb, or ownerId already has maxActiveBombs bombs on the grid (a new
+    // one can be dropped once one of them has exploded).
+    bool placeBomb(Position position, const Grid& grid, int ownerId = 0,
+                   int maxActiveBombs = DefaultMaxActiveBombs);
 
     // Pushes the bomb standing on position by distance cells in direction.
     // Fails if there is no bomb there, or the destination cell is not

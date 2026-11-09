@@ -15,7 +15,7 @@ TEST(KeyboardControllerTest, DefaultBindingsAreZqsdAndEnter)
     EXPECT_EQ(keyboard.commandFor(Key::Q), CharacterCommand::move(Direction::Left));
     EXPECT_EQ(keyboard.commandFor(Key::S), CharacterCommand::move(Direction::Down));
     EXPECT_EQ(keyboard.commandFor(Key::D), CharacterCommand::move(Direction::Right));
-    EXPECT_EQ(keyboard.commandFor(Key::Enter), CharacterCommand::breakBlock());
+    EXPECT_EQ(keyboard.commandFor(Key::Enter), CharacterCommand::pushBomb());
     EXPECT_EQ(keyboard.commandFor(Key::Space), CharacterCommand::placeBomb());
 }
 
@@ -28,10 +28,10 @@ TEST(KeyboardControllerTest, BindingsCanBeCustomized)
 {
     KeyboardController::Bindings bindings;
     bindings.up = Key::Up;
-    bindings.breakBlock = Key::Space;
+    bindings.pushBomb = Key::Space;
     const KeyboardController keyboard(bindings);
 
     EXPECT_EQ(keyboard.commandFor(Key::Up), CharacterCommand::move(Direction::Up));
-    EXPECT_EQ(keyboard.commandFor(Key::Space), CharacterCommand::breakBlock());
+    EXPECT_EQ(keyboard.commandFor(Key::Space), CharacterCommand::pushBomb());
     EXPECT_FALSE(keyboard.commandFor(Key::Z).has_value());
 }

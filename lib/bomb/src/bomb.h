@@ -20,8 +20,10 @@ public:
     // =========================
     // Constructors / Destructor
     // =========================
+    // ownerId identifies the character who dropped it (e.g. its player
+    // index), used to cap how many bombs each character has active.
     explicit Bomb(Position position, float fuseDuration = DefaultFuseDuration,
-                  int blastRadius = DefaultBlastRadius) noexcept;
+                  int blastRadius = DefaultBlastRadius, int ownerId = 0) noexcept;
 
     // =========================
     // Public Methods
@@ -29,6 +31,7 @@ public:
     [[nodiscard]] Position getPosition() const noexcept;
     void setPosition(Position position) noexcept;
 
+    [[nodiscard]] int getOwnerId() const noexcept;
     [[nodiscard]] float getFuseDuration() const noexcept;
     [[nodiscard]] float getTimeRemaining() const noexcept;
     [[nodiscard]] int getBlastRadius() const noexcept;
@@ -43,6 +46,7 @@ private:
     // Members
     // =========================
     Position m_position;
+    int m_ownerId;
     float m_fuseDuration;
     float m_timeRemaining;
     int m_blastRadius;

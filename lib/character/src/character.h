@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <vector>
+
 #include "character_command.h"
 #include "direction.h"
 #include "grid.h"
@@ -48,17 +50,20 @@ public:
     // Make time pass (seconds).
     void update(float deltaSeconds) noexcept;
 
-    // Turn towards direction, then move one cell if it is walkable.
-    // Ignored (returns false) while the character is still moving.
-    bool move(Direction direction, const Grid& grid) noexcept;
+    // If the character does not face direction yet, it only turns towards it
+    // (returns false). Otherwise it moves one cell that way if the cell is
+    // walkable and not one of the obstacles (cells holding entities that
+    // block movement, e.g. bombs: Character does not know about them, the
+    // caller lists them). Returns whether the character moved. Ignored
+    // (returns false, no turn) while the character is still moving.
+    bool move(Direction direction, const Grid& grid, const std::vector<Position>& obstacles = {}) noexcept;
 
-    // Destroy the destructible block in the cell the character is facing.
-    // Returns true if a block has been destroyed, so that callers know the
-    // grid must be redrawn. Ignored while the character is moving.
-    bool breakBlock(Grid& grid) noexcept;
-
-    // Dispatch a command; returns whether it had an effect.
-    bool execute(const CharacterCommand& command, Grid& grid) noexcept;
+    // Dispatch a command; returns whether it had an effect. Bomb commands
+    // (PushBomb, PlaceBomb) need a BombManager, which Character does not know
+    // about: they always return false and callers handle them (see
+    // exe/main.cpp). A character never modifies the grid. obstacles: see move().
+    bool execute(const CharacterCommand& command, const Grid& grid,
+                 const std::vector<Position>& obstacles = {}) noexcept;
 
 private:
     // =========================

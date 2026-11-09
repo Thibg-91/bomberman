@@ -34,7 +34,8 @@ Les niveaux sont des fichiers JSON dans `data/grid/` :
 
 ```json
 {
-  "name": "Level 01",
+  "name": "Pont du galion",
+  "theme": "deck",
   "width": 15,
   "height": 13,
   "rows": [
@@ -44,6 +45,18 @@ Les niveaux sont des fichiers JSON dans `data/grid/` :
   ]
 }
 ```
+
+`theme` (optionnel) choisit le décor dessiné par `GridRenderer` : `deck` (pont du galion),
+`island` (île au trésor), `cave` (grotte des contrebandiers) ou `docks` (quais du port).
+Un thème absent ou inconnu retombe sur `deck`. La caisse des blocs destructibles est la même
+pour tous les thèmes, et un quadrillage léger est dessiné sur toutes les cases jouables.
+
+| Fichier         | Map                       | Thème    |
+|-----------------|---------------------------|----------|
+| `level_01.json` | Pont du galion            | `deck`   |
+| `level_02.json` | Île au trésor             | `island` |
+| `level_03.json` | Grotte des contrebandiers | `cave`   |
+| `level_04.json` | Quais du port             | `docks`  |
 
 | Symbole | Signification                                   |
 |---------|-------------------------------------------------|
@@ -70,7 +83,8 @@ task conan-all
 ./build/Release/bin/bomberman data/grid/level_01.json
 ```
 
-`Échap` ou la croix de la fenêtre ferment le jeu.
+Les touches `1` à `4` relancent la partie sur la map correspondante (`level_01` à `level_04`).
+`Échap` ferme le jeu.
 
 ## Tests unitaires
 

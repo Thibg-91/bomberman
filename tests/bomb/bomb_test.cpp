@@ -54,6 +54,12 @@ TEST(BombTest, NegativeDeltaIsIgnored)
     EXPECT_FLOAT_EQ(bomb.getTimeRemaining(), 2.f);
 }
 
+TEST(BombTest, KeepsItsOwner)
+{
+    EXPECT_EQ(Bomb({0, 0}).getOwnerId(), 0);
+    EXPECT_EQ(Bomb({0, 0}, 2.f, 1, 3).getOwnerId(), 3);
+}
+
 TEST(BombTest, SetPositionMovesTheBomb)
 {
     Bomb bomb({0, 0});

@@ -13,7 +13,7 @@ namespace Bomberman
 {
 
 // Translates keyboard state into CharacterCommand. Defaults: z/q/s/d to move,
-// Enter to break the block in front of the character and Space to drop a bomb.
+// Enter to push the bomb in front of the character and Space to drop a bomb.
 class KeyboardController
 {
 public:
@@ -23,7 +23,7 @@ public:
         sf::Keyboard::Key left = sf::Keyboard::Key::Q;
         sf::Keyboard::Key down = sf::Keyboard::Key::S;
         sf::Keyboard::Key right = sf::Keyboard::Key::D;
-        sf::Keyboard::Key breakBlock = sf::Keyboard::Key::Enter;
+        sf::Keyboard::Key pushBomb = sf::Keyboard::Key::Enter;
         sf::Keyboard::Key placeBomb = sf::Keyboard::Key::Space;
     };
 
@@ -41,10 +41,14 @@ public:
     // Command bound to a key, if any.
     [[nodiscard]] std::optional<CharacterCommand> commandFor(sf::Keyboard::Key key) const noexcept;
 
-    // Command for the keys currently held (real keyboard state). Break wins
+    // Command for the keys currently held (real keyboard state). Pushing wins
     // over placing a bomb, which wins over movement; among movement keys:
     // up, down, left, right.
     [[nodiscard]] std::optional<CharacterCommand> poll() const;
+
+    // Whether the key bound to moving in direction is currently held (real
+    // keyboard state).
+    [[nodiscard]] bool isHeld(Direction direction) const;
 
 private:
     // =========================

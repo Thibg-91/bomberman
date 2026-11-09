@@ -23,6 +23,7 @@ public:
 // {
 //   "width": 15,
 //   "height": 13,
+//   "theme": "deck",          (optional, see Grid::getTheme())
 //   "rows": [ "###############", "#P.+++...", ... ]
 // }
 //

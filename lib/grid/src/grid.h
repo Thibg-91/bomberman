@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <string>
 #include <vector>
 
 #include "position.h"
@@ -46,6 +47,11 @@ public:
     [[nodiscard]] const std::vector<Position>& getSpawnPoints() const noexcept;
     void addSpawnPoint(Position position);
 
+    // Visual theme name read from the level file ("deck", "island"...). The
+    // grid never interprets it; renderers decide what it looks like.
+    [[nodiscard]] const std::string& getTheme() const noexcept;
+    void setTheme(std::string theme);
+
 private:
     // =========================
     // Private Methods
@@ -59,6 +65,7 @@ private:
     int m_height = 0;
     std::vector<Tile> m_tiles;
     std::vector<Position> m_spawnPoints;
+    std::string m_theme;
 };
 
 } // namespace Bomberman

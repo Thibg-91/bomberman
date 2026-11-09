@@ -13,10 +13,11 @@ namespace Bomberman
 // so the character logic does not depend on where they come from.
 struct CharacterCommand
 {
+    // Characters never break blocks themselves: only bomb explosions do.
     enum class Type
     {
         Move,
-        BreakBlock,
+        PushBomb, // punch the bomb standing in front of the character
         PlaceBomb
     };
 
@@ -28,9 +29,9 @@ struct CharacterCommand
         return {Type::Move, direction};
     }
 
-    [[nodiscard]] static constexpr CharacterCommand breakBlock() noexcept
+    [[nodiscard]] static constexpr CharacterCommand pushBomb() noexcept
     {
-        return {Type::BreakBlock, Direction::Down};
+        return {Type::PushBomb, Direction::Down};
     }
 
     [[nodiscard]] static constexpr CharacterCommand placeBomb() noexcept

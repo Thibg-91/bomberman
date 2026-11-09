@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <array>
-
 #include <SFML/Graphics.hpp>
 
 #include "character.h"
@@ -18,11 +16,16 @@ namespace Bomberman
 // slides from the previous cell to the new one, hops and steps; dropping a
 // bomb plays a short arms-up pose with a spark flashing where it landed.
 //
-// The artwork changes with Character::getFacing(): facing down (the default)
-// shows the face described above; facing up shows the back of the head (no
-// face, the bandana covers nearly all of it); facing left/right shows a
-// side profile (a single centered arm/leg/ear, the visible eye and scar on
-// the leading side, no eyepatch/strap since it is on the hidden cheek).
+// The artwork changes with Character::getFacing(): facing down shows the
+// face; facing up shows the back of the head (no face, the bandana covers
+// nearly all of it); facing left/right shows a side profile (a single
+// centered arm/leg/ear, the visible eye and scar on the leading side, no
+// eyepatch/strap since it is on the hidden cheek).
+//
+// Every shape is tessellated into one triangle vertex array rebuilt by
+// update(), using the exact coordinates of the validated mock-up (a 100x100
+// view box with the body centered on (50, 56), radius 27), so the in-game
+// character matches it at any resolution.
 class CharacterRenderer : public sf::Drawable, public sf::Transformable
 {
 public:
@@ -54,7 +57,7 @@ public:
     // =========================
     // Public Methods
     // =========================
-    // Refresh the shapes from the character state; call it every frame.
+    // Rebuild the artwork from the character state; call it every frame.
     // deltaSeconds advances the bomb-drop pose started by triggerBombAnimation();
     // it can be left at 0 for tests that only check the idle/walk pose.
     void update(const Character& character, float deltaSeconds = 0.f);
@@ -64,9 +67,12 @@ public:
     void triggerBombAnimation() noexcept;
     [[nodiscard]] bool isPlayingBombAnimation() const noexcept;
 
-    // Center of the character in pixels, relative to the grid origin.
+    // Center of the character's cell in pixels (slides between cells while
+    // walking), relative to the grid origin.
     [[nodiscard]] sf::Vector2f getCenter() const noexcept;
-    [[nodiscard]] const sf::CircleShape& getBody() const noexcept;
+    // Center of the round body: same as getCenter() but lifted while hopping.
+    [[nodiscard]] sf::Vector2f getBodyCenter() const noexcept;
+    [[nodiscard]] const sf::VertexArray& getVertices() const noexcept;
 
 private:
     // =========================
@@ -78,43 +84,11 @@ private:
     // Members
     // =========================
     float m_tileSize;
+    Palette m_palette;
     sf::Vector2f m_center;
+    sf::Vector2f m_bodyCenter;
     float m_bombAnimElapsed; // >= BombAnimDuration means idle
-
-    sf::CircleShape m_body;
-    sf::CircleShape m_armLeft;
-    sf::CircleShape m_armRight;
-    sf::RectangleShape m_legLeft;
-    sf::RectangleShape m_legRight;
-
-    sf::ConvexShape m_bandanaCap;
-    std::array<sf::ConvexShape, 4> m_bandanaPennants;
-    sf::CircleShape m_knot;
-    sf::ConvexShape m_tailLeft;
-    sf::ConvexShape m_tailRight;
-    std::array<sf::CircleShape, 4> m_bandanaDots; // facing up uses all 4, others only the first 3
-
-    sf::CircleShape m_eye;
-    sf::CircleShape m_eyeShine;
-    sf::CircleShape m_blushLeft;
-    sf::CircleShape m_blushRight;
-    sf::VertexArray m_smile;
-    std::array<sf::Vector2f, 5> m_smileBase; // points relative to the body center
-
-    sf::RectangleShape m_eyepatchStrap;
-    sf::CircleShape m_eyepatch;
-    sf::RectangleShape m_scar;
-
-    // Single centered ear (facing down/left/right only) and the back-of-head
-    // panel (facing up only).
-    sf::CircleShape m_earOuter;
-    sf::CircleShape m_earInner;
-    sf::CircleShape m_backPanel;
-
-    sf::CircleShape m_spark;
-
-    // Remembered so draw() knows which of the above to skip.
-    Direction m_facing;
+    sf::VertexArray m_vertices;
 };
 
 } // namespace Bomberman

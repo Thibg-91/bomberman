@@ -65,15 +65,20 @@ void Character::update(float deltaSeconds) noexcept
         m_moveElapsed = std::min(m_moveElapsed + deltaSeconds, m_moveDuration);
 }
 
-bool Character::move(Direction direction, const Grid& grid) noexcept
+bool Character::move(Direction direction, const Grid& grid, const std::vector<Position>& obstacles) noexcept
 {
     if (isMoving())
         return false;
 
-    m_facing = direction;
+    // First press on a new direction: just turn.
+    if (direction != m_facing)
+    {
+        m_facing = direction;
+        return false;
+    }
 
     const Position target = step(m_position, direction);
-    if (!grid.isWalkable(target))
+    if (!grid.isWalkable(target) || std::find(obstacles.begin(), obstacles.end(), target) != obstacles.end())
         return false;
 
     m_previousPosition = m_position;
@@ -82,29 +87,15 @@ bool Character::move(Direction direction, const Grid& grid) noexcept
     return true;
 }
 
-bool Character::breakBlock(Grid& grid) noexcept
-{
-    if (isMoving())
-        return false;
-
-    const Position target = step(m_position, m_facing);
-    if (!grid.isInside(target))
-        return false;
-
-    return grid.getTile(target).destroy();
-}
-
-bool Character::execute(const CharacterCommand& command, Grid& grid) noexcept
+bool Character::execute(const CharacterCommand& command, const Grid& grid,
+                        const std::vector<Position>& obstacles) noexcept
 {
     switch (command.type)
     {
     case CharacterCommand::Type::Move:
-        return move(command.direction, grid);
-    case CharacterCommand::Type::BreakBlock:
-        return breakBlock(grid);
+        return move(command.direction, grid, obstacles);
+    case CharacterCommand::Type::PushBomb:
     case CharacterCommand::Type::PlaceBomb:
-        // Placing a bomb needs a BombManager, which Character does not know
-        // about; callers handle PlaceBomb themselves (see exe/main.cpp).
         return false;
     }
     return false;

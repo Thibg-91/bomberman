@@ -20,12 +20,28 @@ bool BombManager::hasBombAt(Position position) const noexcept
                         [position](const Bomb& bomb) { return bomb.getPosition() == position; });
 }
 
-bool BombManager::placeBomb(Position position, const Grid& grid)
+std::vector<Position> BombManager::getBombPositions() const
 {
-    if (!grid.isWalkable(position) || hasBombAt(position))
+    std::vector<Position> positions;
+    positions.reserve(m_bombs.size());
+    for (const Bomb& bomb : m_bombs)
+        positions.push_back(bomb.getPosition());
+    return positions;
+}
+
+int BombManager::countActiveBombs(int ownerId) const noexcept
+{
+    return static_cast<int>(std::count_if(m_bombs.begin(), m_bombs.end(), [ownerId](const Bomb& bomb) {
+        return bomb.getOwnerId() == ownerId && !bomb.hasExploded();
+    }));
+}
+
+bool BombManager::placeBomb(Position position, const Grid& grid, int ownerId, int maxActiveBombs)
+{
+    if (!grid.isWalkable(position) || hasBombAt(position) || countActiveBombs(ownerId) >= maxActiveBombs)
         return false;
 
-    m_bombs.emplace_back(position);
+    m_bombs.emplace_back(position, Bomb::DefaultFuseDuration, Bomb::DefaultBlastRadius, ownerId);
     return true;
 }
 

@@ -79,6 +79,14 @@ Grid GridLoader::loadFromString(const std::string& jsonContent)
                             + std::to_string(rows->size()));
 
     Grid grid(width, height);
+
+    if (const auto theme = document.find("theme"); theme != document.end())
+    {
+        if (!theme->is_string())
+            throw GridLoadError("\"theme\" must be a string");
+        grid.setTheme(theme->get<std::string>());
+    }
+
     for (int y = 0; y < height; ++y)
     {
         const auto& row = (*rows)[static_cast<std::size_t>(y)];

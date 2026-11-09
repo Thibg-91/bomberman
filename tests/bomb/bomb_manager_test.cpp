@@ -58,6 +58,58 @@ TEST(BombManagerTest, PlaceBombFailsWhereABombAlreadyIs)
     EXPECT_EQ(manager.getBombs().size(), 1u);
 }
 
+TEST(BombManagerTest, ACharacterHasOnlyOneActiveBombByDefault)
+{
+    Grid grid = openGrid();
+    BombManager manager;
+    ASSERT_TRUE(manager.placeBomb({3, 3}, grid, 0));
+    EXPECT_EQ(manager.countActiveBombs(0), 1);
+
+    EXPECT_FALSE(manager.placeBomb({1, 1}, grid, 0));
+    EXPECT_EQ(manager.getBombs().size(), 1u);
+
+    // Once it has exploded, the character can drop another one.
+    (void)manager.update(Bomb::DefaultFuseDuration, grid);
+    EXPECT_EQ(manager.countActiveBombs(0), 0);
+    EXPECT_TRUE(manager.placeBomb({1, 1}, grid, 0));
+}
+
+TEST(BombManagerTest, TheLimitIsPerCharacter)
+{
+    const Grid grid = openGrid();
+    BombManager manager;
+
+    EXPECT_TRUE(manager.placeBomb({3, 3}, grid, 0));
+    EXPECT_TRUE(manager.placeBomb({1, 1}, grid, 1));
+    EXPECT_FALSE(manager.placeBomb({5, 5}, grid, 1));
+    EXPECT_EQ(manager.countActiveBombs(0), 1);
+    EXPECT_EQ(manager.countActiveBombs(1), 1);
+}
+
+TEST(BombManagerTest, TheLimitCanBeRaised)
+{
+    const Grid grid = openGrid();
+    BombManager manager;
+
+    EXPECT_TRUE(manager.placeBomb({3, 3}, grid, 0, 2));
+    EXPECT_TRUE(manager.placeBomb({1, 1}, grid, 0, 2));
+    EXPECT_FALSE(manager.placeBomb({5, 5}, grid, 0, 2));
+}
+
+TEST(BombManagerTest, GetBombPositionsFollowsPlacedPushedAndExplodedBombs)
+{
+    Grid grid = openGrid();
+    BombManager manager;
+    EXPECT_TRUE(manager.getBombPositions().empty());
+
+    ASSERT_TRUE(manager.placeBomb({3, 3}, grid));
+    ASSERT_TRUE(manager.pushBombAt({3, 3}, Direction::Right, grid));
+    EXPECT_EQ(manager.getBombPositions(), (std::vector<Position>{{4, 3}}));
+
+    (void)manager.update(Bomb::DefaultFuseDuration, grid);
+    EXPECT_TRUE(manager.getBombPositions().empty());
+}
+
 TEST(BombManagerTest, PushMovesTheBombByTheGivenDistance)
 {
     const Grid grid = openGrid();
@@ -96,8 +148,8 @@ TEST(BombManagerTest, PushFailsWhenAnotherBombIsAlreadyThere)
 {
     const Grid grid = openGrid();
     BombManager manager;
-    ASSERT_TRUE(manager.placeBomb({3, 3}, grid));
-    ASSERT_TRUE(manager.placeBomb({4, 3}, grid));
+    ASSERT_TRUE(manager.placeBomb({3, 3}, grid, 0));
+    ASSERT_TRUE(manager.placeBomb({4, 3}, grid, 1));
 
     EXPECT_FALSE(manager.pushBombAt({3, 3}, Direction::Right, grid));
 }

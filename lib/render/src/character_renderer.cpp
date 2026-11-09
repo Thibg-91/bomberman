@@ -1,8 +1,12 @@
 #include "character_renderer.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdint>
+#include <vector>
+
+#include "mesh.h"
 
 namespace Bomberman
 {
@@ -11,14 +15,27 @@ namespace
 {
 
 constexpr float Pi = 3.14159265f;
-constexpr float HopAmplitude = 0.12f;      // fraction of a tile
+constexpr float HopAmplitude = 0.12f;       // fraction of a tile
 constexpr float BodyRadiusFraction = 0.33f; // fraction of a tile
-
-constexpr float LegStepAmplitude = 0.09f; // fraction of a tile, vertical lift
-constexpr float MaxRaiseAngleDeg = 150.f; // arms, bomb-drop pose
-constexpr float TailFlapFrequency = 4.f;  // wiggles per cell moved
+constexpr float LegStepAmplitude = 0.09f;   // fraction of a tile
+constexpr float MaxRaiseAngleDeg = 140.f;   // arms swing up from the shoulders
+constexpr float TailFlapFrequency = 4.f;    // wiggles per cell moved
 constexpr float TailFlapAmplitudeDeg = 14.f;
-constexpr float FaceNudge = 0.08f; // fraction of a tile, towards facing
+
+// Mock-up space: 100x100 view box, body circle centered on (50, 56), radius 27.
+constexpr float MockBodyRadius = 27.f;
+constexpr sf::Vector2f MockBodyCenter{50.f, 56.f};
+
+constexpr sf::Color Ink(28, 20, 13);
+constexpr sf::Color EarInner(201, 138, 90, 179);
+constexpr sf::Color BandanaDot(255, 243, 223, 217);
+constexpr sf::Color Blush(240, 132, 138, 140);
+constexpr sf::Color ScarColor(176, 90, 82);
+constexpr sf::Color SparkColor(255, 207, 77);
+
+// Stroke widths of the mock-up, in mock units.
+constexpr float BodyStroke = 3.f;
+constexpr float BandanaStroke = 2.5f;
 
 sf::Vector2f cellCenter(Position position, float tileSize)
 {
@@ -31,14 +48,247 @@ sf::Vector2f directionVector(Direction direction)
     return {static_cast<float>(offset.x), static_cast<float>(offset.y)};
 }
 
-float angleDegrees(sf::Vector2f from, sf::Vector2f to)
+sf::Vector2f rotateAround(sf::Vector2f point, sf::Vector2f pivot, float degrees)
 {
-    return std::atan2(to.y - from.y, to.x - from.x) * 180.f / Pi;
+    const float a = degrees * Pi / 180.f;
+    const float c = std::cos(a);
+    const float s = std::sin(a);
+    const sf::Vector2f d = point - pivot;
+    return {pivot.x + d.x * c - d.y * s, pivot.y + d.x * s + d.y * c};
 }
 
-float lengthOf(sf::Vector2f from, sf::Vector2f to)
+std::vector<sf::Vector2f> rotateAround(std::vector<sf::Vector2f> points, sf::Vector2f pivot, float degrees)
 {
-    return std::hypot(to.x - from.x, to.y - from.y);
+    for (sf::Vector2f& point : points)
+        point = rotateAround(point, pivot, degrees);
+    return points;
+}
+
+// SVG "M a Q c1 b Q c2 a Z": a closed shape made of two quadratic curves.
+std::vector<sf::Vector2f> twoCurveLoop(sf::Vector2f a, sf::Vector2f c1, sf::Vector2f b, sf::Vector2f c2)
+{
+    std::vector<sf::Vector2f> points = quadraticBezier(a, c1, b, 12);
+    const std::vector<sf::Vector2f> back = quadraticBezier(b, c2, a, 12);
+    points.insert(points.end(), back.begin() + 1, back.end() - 1);
+    return points;
+}
+
+// Upper half of the bandana circle: from (22, 50) over the top to (78, 50).
+std::vector<sf::Vector2f> bandanaDome()
+{
+    constexpr int Segments = 32;
+    std::vector<sf::Vector2f> points;
+    for (int i = 0; i <= Segments; ++i)
+    {
+        const float a = Pi + Pi * static_cast<float>(i) / static_cast<float>(Segments);
+        points.push_back({50.f + 28.f * std::cos(a), 50.f + 28.f * std::sin(a)});
+    }
+    return points;
+}
+
+// The dome closed by the pointed fabric edge low on the forehead.
+std::vector<sf::Vector2f> bandanaFront()
+{
+    static constexpr std::array<sf::Vector2f, 9> Trim = {
+        sf::Vector2f{72.f, 48.f}, sf::Vector2f{66.f, 54.f}, sf::Vector2f{60.f, 47.f},
+        sf::Vector2f{54.f, 53.f}, sf::Vector2f{50.f, 46.f}, sf::Vector2f{46.f, 53.f},
+        sf::Vector2f{40.f, 47.f}, sf::Vector2f{34.f, 54.f}, sf::Vector2f{28.f, 48.f}};
+    std::vector<sf::Vector2f> points = bandanaDome();
+    points.insert(points.end(), Trim.begin(), Trim.end());
+    return points;
+}
+
+// Seen from behind, the bandana wraps the lower back of the head too.
+std::vector<sf::Vector2f> bandanaBackBand()
+{
+    std::vector<sf::Vector2f> points = quadraticBezier({23.f, 48.f}, {50.f, 70.f}, {77.f, 48.f}, 16);
+    const std::vector<sf::Vector2f> lower = quadraticBezier({77.f, 58.f}, {50.f, 76.f}, {23.f, 58.f}, 16);
+    points.insert(points.end(), lower.begin(), lower.end());
+    return points;
+}
+
+// Draws mock-up coordinates as pixels, with SVG-like fill + stroke helpers.
+// A mirrored painter flips the mock-up horizontally (right profile).
+class Painter
+{
+public:
+    Painter(Mesh& mesh, sf::Vector2f bodyCenter, float unit, bool mirrored)
+        : m_mesh(mesh),
+          m_bodyCenter(bodyCenter),
+          m_unit(unit),
+          m_mirrored(mirrored)
+    {
+    }
+
+    [[nodiscard]] sf::Vector2f px(sf::Vector2f mock) const
+    {
+        const float x = m_mirrored ? 100.f - mock.x : mock.x;
+        return m_bodyCenter + (sf::Vector2f{x, mock.y} - MockBodyCenter) * m_unit;
+    }
+
+    [[nodiscard]] std::vector<sf::Vector2f> px(const std::vector<sf::Vector2f>& mock) const
+    {
+        std::vector<sf::Vector2f> points;
+        points.reserve(mock.size());
+        for (const sf::Vector2f p : mock)
+            points.push_back(px(p));
+        return points;
+    }
+
+    void ellipse(sf::Vector2f center, float rx, float ry, sf::Color fill, float rotationDeg = 0.f)
+    {
+        m_mesh.ellipse(px(center), rx * m_unit, ry * m_unit, fill, angle(rotationDeg));
+    }
+
+    void outlinedEllipse(sf::Vector2f center, float rx, float ry, sf::Color fill, float stroke, float rotationDeg = 0.f)
+    {
+        const float w = strokeWidth(stroke);
+        m_mesh.ellipse(px(center), rx * m_unit + w / 2.f, ry * m_unit + w / 2.f, Ink, angle(rotationDeg));
+        m_mesh.ellipse(px(center), rx * m_unit - w / 2.f, ry * m_unit - w / 2.f, fill, angle(rotationDeg));
+    }
+
+    void outlinedShape(const std::vector<sf::Vector2f>& mock, sf::Color fill, float stroke)
+    {
+        const std::vector<sf::Vector2f> points = px(mock);
+        m_mesh.fillPolygon(points, fill);
+        m_mesh.stroke(points, strokeWidth(stroke), Ink);
+    }
+
+    void roundedRect(float x, float y, float w, float h, float radius, sf::Color fill)
+    {
+        const sf::Vector2f a = px({x, y});
+        const sf::Vector2f b = px({x + w, y + h});
+        m_mesh.polygon(roundedRectPoints(std::min(a.x, b.x), std::min(a.y, b.y), std::abs(b.x - a.x),
+                                         std::abs(b.y - a.y), radius * m_unit),
+                       fill);
+    }
+
+    void line(sf::Vector2f a, sf::Vector2f b, float stroke, sf::Color color, bool roundCaps)
+    {
+        m_mesh.line(px(a), px(b), strokeWidth(stroke), color, roundCaps);
+    }
+
+    // Open quadratic curve with round caps (smiles).
+    void curve(sf::Vector2f p0, sf::Vector2f p1, sf::Vector2f p2, float stroke, sf::Color color)
+    {
+        m_mesh.polyline(px(quadraticBezier(p0, p1, p2, 12)), strokeWidth(stroke), color, true);
+    }
+
+private:
+    [[nodiscard]] float strokeWidth(float stroke) const { return std::max(1.f, stroke * m_unit); }
+    [[nodiscard]] float angle(float degrees) const { return (m_mirrored ? -degrees : degrees) * Pi / 180.f; }
+
+    Mesh& m_mesh;
+    sf::Vector2f m_bodyCenter;
+    float m_unit;
+    bool m_mirrored;
+};
+
+// Animated offsets, in mock units / degrees.
+struct Pose
+{
+    float leftLift = 0.f;
+    float rightLift = 0.f;
+    float armAngle = 0.f;
+    float armNudge = 0.f;
+    float tailAngle = 0.f;
+};
+
+void paintLegs(Painter& p, const Pose& pose, bool single)
+{
+    if (single)
+    {
+        p.roundedRect(44.f, 80.f - std::max(pose.leftLift, pose.rightLift), 12.f, 14.f, 4.f, Ink);
+        return;
+    }
+    p.roundedRect(32.f, 80.f - pose.leftLift, 12.f, 14.f, 4.f, Ink);
+    p.roundedRect(56.f, 80.f - pose.rightLift, 12.f, 14.f, 4.f, Ink);
+}
+
+void paintArms(Painter& p, const Pose& pose, bool single, sf::Color skin)
+{
+    if (single)
+    {
+        p.outlinedEllipse({50.f, 60.f - pose.armNudge}, 7.f, 10.f, skin, BodyStroke);
+        return;
+    }
+    // For the bomb-drop pose, each arm swings up around its shoulder.
+    constexpr sf::Vector2f LeftShoulder{29.f, 47.f};
+    constexpr sf::Vector2f RightShoulder{71.f, 47.f};
+    p.outlinedEllipse(rotateAround({25.f, 54.f}, LeftShoulder, pose.armAngle), 7.f, 11.f, skin, BodyStroke,
+                      pose.armAngle);
+    p.outlinedEllipse(rotateAround({75.f, 54.f}, RightShoulder, -pose.armAngle), 7.f, 11.f, skin, BodyStroke,
+                      -pose.armAngle);
+}
+
+void paintEar(Painter& p, sf::Color skin)
+{
+    p.outlinedEllipse({50.f, 56.f}, 4.2f, 5.2f, skin, BandanaStroke);
+    p.ellipse({50.f, 56.5f}, 1.9f, 2.6f, EarInner);
+}
+
+void paintKnotAndTails(Painter& p, sf::Color bandana, sf::Vector2f knot, float knotRadius,
+                       const std::vector<sf::Vector2f>& tailA, const std::vector<sf::Vector2f>& tailB, float tailAngle)
+{
+    p.outlinedEllipse(knot, knotRadius, knotRadius, bandana, BandanaStroke);
+    p.outlinedShape(rotateAround(tailA, knot, tailAngle), bandana, BandanaStroke);
+    p.outlinedShape(rotateAround(tailB, knot, -tailAngle * 0.7f), bandana, BandanaStroke);
+}
+
+void paintFrontDots(Painter& p)
+{
+    for (const sf::Vector2f dot : {sf::Vector2f{38.f, 42.f}, sf::Vector2f{50.f, 38.f}, sf::Vector2f{62.f, 42.f}})
+        p.ellipse(dot, 2.1f, 2.1f, BandanaDot);
+}
+
+void paintFront(Painter& p, const CharacterRenderer::Palette& palette, const Pose& pose)
+{
+    paintEar(p, palette.skin);
+    p.outlinedShape(bandanaFront(), palette.bandana, BandanaStroke);
+    paintKnotAndTails(p, palette.bandana, {70.f, 40.f}, 7.f,
+                      twoCurveLoop({58.f, 30.f}, {70.f, 26.f}, {70.f, 40.f}, {62.f, 36.f}),
+                      twoCurveLoop({64.f, 32.f}, {76.f, 34.f}, {72.f, 47.f}, {65.f, 40.f}), pose.tailAngle);
+    paintFrontDots(p);
+
+    p.ellipse({36.f, 62.f}, 5.f, 3.2f, Blush);
+    p.ellipse({64.f, 62.f}, 5.f, 3.2f, Blush);
+    p.ellipse({41.f, 55.f}, 6.4f, 7.4f, Ink);
+    p.ellipse({39.f, 52.f}, 1.6f, 1.6f, sf::Color::White);
+    p.curve({46.f, 65.f}, {50.f, 68.f}, {54.f, 65.f}, 2.2f, Ink);
+    // Eyepatch strap stops right under the bandana; patch tilted along it.
+    p.line({41.f, 48.5f}, {77.f, 65.f}, 2.4f, Ink, false);
+    p.ellipse({60.f, 55.f}, 7.4f, 8.4f, Ink, 25.f);
+    p.line({34.f, 60.f}, {33.f, 65.f}, 1.6f, ScarColor, true);
+}
+
+void paintBack(Painter& p, const CharacterRenderer::Palette& palette, const Pose& pose)
+{
+    p.outlinedShape(bandanaDome(), palette.bandana, BandanaStroke);
+    p.outlinedShape(bandanaBackBand(), palette.bandana, BandanaStroke);
+    paintKnotAndTails(p, palette.bandana, {50.f, 40.f}, 8.f,
+                      twoCurveLoop({42.f, 46.f}, {32.f, 58.f}, {40.f, 68.f}, {46.f, 56.f}),
+                      twoCurveLoop({58.f, 46.f}, {68.f, 58.f}, {60.f, 68.f}, {54.f, 56.f}), pose.tailAngle);
+    p.ellipse({36.f, 44.f}, 2.1f, 2.1f, BandanaDot);
+    p.ellipse({64.f, 44.f}, 2.1f, 2.1f, BandanaDot);
+    p.ellipse({42.f, 62.f}, 2.f, 2.f, BandanaDot);
+    p.ellipse({58.f, 62.f}, 2.f, 2.f, BandanaDot);
+}
+
+// Authored facing left; the painter mirrors it for the right profile.
+void paintProfile(Painter& p, const CharacterRenderer::Palette& palette, const Pose& pose)
+{
+    paintEar(p, palette.skin);
+    p.outlinedShape(bandanaFront(), palette.bandana, BandanaStroke);
+    paintKnotAndTails(p, palette.bandana, {74.f, 44.f}, 7.f,
+                      twoCurveLoop({66.f, 36.f}, {80.f, 32.f}, {80.f, 46.f}, {70.f, 42.f}),
+                      twoCurveLoop({70.f, 40.f}, {84.f, 44.f}, {78.f, 56.f}, {68.f, 50.f}), pose.tailAngle);
+    paintFrontDots(p);
+
+    p.ellipse({26.f, 62.f}, 5.f, 3.2f, Blush);
+    p.ellipse({30.f, 55.f}, 6.8f, 7.6f, Ink);
+    p.ellipse({28.f, 52.f}, 1.7f, 1.7f, sf::Color::White);
+    p.curve({25.f, 65.f}, {30.f, 68.f}, {34.f, 66.f}, 2.2f, Ink);
+    p.line({20.f, 58.f}, {18.f, 64.f}, 1.6f, ScarColor, true);
 }
 
 } // namespace
@@ -66,196 +316,12 @@ CharacterRenderer::Palette CharacterRenderer::paletteForPlayer(int playerIndex) 
 // =========================
 CharacterRenderer::CharacterRenderer(float tileSize, Palette palette)
     : m_tileSize(tileSize),
+      m_palette(palette),
       m_center(0.f, 0.f),
+      m_bodyCenter(0.f, 0.f),
       m_bombAnimElapsed(BombAnimDuration),
-      m_body(tileSize * BodyRadiusFraction),
-      m_armLeft(1.f),
-      m_armRight(1.f),
-      m_legLeft(),
-      m_legRight(),
-      m_knot(1.f),
-      m_tailLeft(3),
-      m_tailRight(3),
-      m_eye(1.f),
-      m_eyeShine(1.f),
-      m_blushLeft(1.f),
-      m_blushRight(1.f),
-      m_smile(sf::PrimitiveType::LineStrip, 5),
-      m_eyepatch(1.f),
-      m_earOuter(1.f),
-      m_earInner(1.f),
-      m_backPanel(1.f),
-      m_spark(tileSize * 0.1f),
-      m_facing(Direction::Down)
+      m_vertices(sf::PrimitiveType::Triangles)
 {
-    // "27 units" is the body radius in the original mock-up; every other
-    // shape was authored relative to it, so every length below is expressed
-    // the same way and converted with this single scale factor.
-    const float unit = (tileSize * BodyRadiusFraction) / 27.f;
-    const auto relative = [unit](float x, float y) { return sf::Vector2f(x * unit, y * unit); };
-
-    const sf::Color dark(28, 20, 13);
-    const sf::Color strapColor = dark;
-
-    // Outline thickness scales with the tile size instead of being a fixed
-    // pixel count, so it stays proportionally the same (and visible) at any
-    // resolution, including a fullscreen window with much bigger tiles.
-    const float outlineMain = std::max(1.f, tileSize * 0.045f);
-    const float outlineThin = std::max(1.f, tileSize * 0.028f);
-
-    m_body.setFillColor(palette.skin);
-    m_body.setOutlineColor(dark);
-    m_body.setOutlineThickness(outlineMain);
-    m_body.setOrigin({m_body.getRadius(), m_body.getRadius()});
-
-    // Arms: ellipses (a scaled circle) that rotate around their own center,
-    // only during the bomb-drop pose.
-    for (sf::CircleShape* arm : {&m_armLeft, &m_armRight})
-    {
-        arm->setRadius(7.f * unit);
-        arm->setScale({1.f, 11.f / 7.f});
-        arm->setOrigin({arm->getRadius(), arm->getRadius()});
-        arm->setFillColor(palette.skin);
-        arm->setOutlineColor(dark);
-        arm->setOutlineThickness(outlineMain);
-    }
-
-    // Legs: simple boots, lifted one at a time while walking.
-    for (sf::RectangleShape* leg : {&m_legLeft, &m_legRight})
-    {
-        leg->setSize({12.f * unit, 14.f * unit});
-        leg->setFillColor(dark);
-    }
-
-    // Bandana cap: the upper half of the head, a convex dome sitting flat on
-    // the forehead (the pointed trim below is drawn as separate pennants so
-    // every piece stays a simple convex shape). Sampled finely so the dome
-    // reads as a smooth curve rather than a faceted polygon.
-    constexpr int CapSegments = 16;
-    m_bandanaCap.setPointCount(CapSegments + 1);
-    for (int i = 0; i <= CapSegments; ++i)
-    {
-        const float theta = Pi - Pi * (static_cast<float>(i) / static_cast<float>(CapSegments));
-        m_bandanaCap.setPoint(static_cast<std::size_t>(i),
-                               relative(28.f * std::cos(theta), -6.f - 28.f * std::sin(theta)));
-    }
-    m_bandanaCap.setFillColor(palette.bandana);
-    m_bandanaCap.setOutlineColor(dark);
-    m_bandanaCap.setOutlineThickness(outlineMain);
-
-    constexpr std::array<float, 4> pennantCenters = {-18.f, -6.f, 6.f, 18.f};
-    for (std::size_t i = 0; i < m_bandanaPennants.size(); ++i)
-    {
-        sf::ConvexShape& pennant = m_bandanaPennants[i];
-        const float cx = pennantCenters[i];
-        pennant.setPointCount(3);
-        pennant.setPoint(0, relative(cx - 5.f, -6.f));
-        pennant.setPoint(1, relative(cx + 5.f, -6.f));
-        pennant.setPoint(2, relative(cx, 2.f));
-        pennant.setFillColor(palette.bandana);
-        pennant.setOutlineColor(dark);
-        pennant.setOutlineThickness(outlineThin);
-    }
-
-    m_knot.setRadius(7.f * unit);
-    m_knot.setOrigin({m_knot.getRadius(), m_knot.getRadius()});
-    m_knot.setFillColor(palette.bandana);
-    m_knot.setOutlineColor(dark);
-    m_knot.setOutlineThickness(outlineMain);
-
-    // Tails flap around the knot, so their points are expressed relative to
-    // it (0, 0) rather than relative to the body center.
-    m_tailLeft.setPoint(0, relative(0.f, 0.f));
-    m_tailLeft.setPoint(1, relative(-14.f, -10.f));
-    m_tailLeft.setPoint(2, relative(-6.f, -16.f));
-    m_tailRight.setPoint(0, relative(0.f, 0.f));
-    m_tailRight.setPoint(1, relative(6.f, -14.f));
-    m_tailRight.setPoint(2, relative(14.f, -6.f));
-    for (sf::ConvexShape* tail : {&m_tailLeft, &m_tailRight})
-    {
-        tail->setFillColor(palette.bandana);
-        tail->setOutlineColor(dark);
-        tail->setOutlineThickness(outlineThin);
-    }
-
-    for (sf::CircleShape& dot : m_bandanaDots)
-    {
-        dot.setRadius(2.1f * unit);
-        dot.setOrigin({dot.getRadius(), dot.getRadius()});
-        dot.setFillColor(sf::Color(255, 243, 223, 215));
-    }
-
-    // Cute face: one big expressive eye (the other is covered by the
-    // eyepatch), a shine, blush and a small smile.
-    m_eye.setRadius(6.4f * unit);
-    m_eye.setScale({1.f, 7.4f / 6.4f});
-    m_eye.setOrigin({m_eye.getRadius(), m_eye.getRadius()});
-    m_eye.setFillColor(dark);
-
-    m_eyeShine.setRadius(1.6f * unit);
-    m_eyeShine.setOrigin({m_eyeShine.getRadius(), m_eyeShine.getRadius()});
-    m_eyeShine.setFillColor(sf::Color::White);
-
-    for (sf::CircleShape* blush : {&m_blushLeft, &m_blushRight})
-    {
-        blush->setRadius(5.f * unit);
-        blush->setScale({1.f, 3.2f / 5.f});
-        blush->setOrigin({blush->getRadius(), blush->getRadius()});
-        blush->setFillColor(sf::Color(240, 132, 138, 140));
-    }
-
-    m_smileBase = {relative(-4.f, 9.f), relative(-2.f, 10.125f), relative(0.f, 10.5f), relative(2.f, 10.125f),
-                   relative(4.f, 9.f)};
-    for (std::size_t i = 0; i < m_smileBase.size(); ++i)
-        m_smile[i].color = dark;
-
-    // Eyepatch: a diagonal strap that stops right under the bandana, and a
-    // tilted patch over the other eye.
-    const sf::Vector2f strapStart = relative(-9.f, -7.5f);
-    const sf::Vector2f strapEnd = relative(27.f, 9.f);
-    m_eyepatchStrap.setSize({lengthOf(strapStart, strapEnd), tileSize * 0.026f});
-    m_eyepatchStrap.setOrigin({0.f, m_eyepatchStrap.getSize().y / 2.f});
-    m_eyepatchStrap.setRotation(sf::degrees(angleDegrees(strapStart, strapEnd)));
-    m_eyepatchStrap.setFillColor(strapColor);
-
-    m_eyepatch.setRadius(7.4f * unit);
-    m_eyepatch.setScale({1.f, 8.4f / 7.4f});
-    m_eyepatch.setOrigin({m_eyepatch.getRadius(), m_eyepatch.getRadius()});
-    m_eyepatch.setRotation(sf::degrees(25.f));
-    m_eyepatch.setFillColor(dark);
-
-    const sf::Vector2f scarStart = relative(-16.f, 4.f);
-    const sf::Vector2f scarEnd = relative(-17.f, 9.f);
-    m_scar.setSize({lengthOf(scarStart, scarEnd), tileSize * 0.016f});
-    m_scar.setOrigin({0.f, m_scar.getSize().y / 2.f});
-    m_scar.setRotation(sf::degrees(angleDegrees(scarStart, scarEnd)));
-    m_scar.setFillColor(sf::Color(176, 90, 82));
-
-    // Single centered ear, peeking through the gap in the bandana trim; only
-    // used facing down/left/right (facing up shows the back of the head).
-    m_earOuter.setRadius(4.2f * unit);
-    m_earOuter.setScale({1.f, 5.2f / 4.2f});
-    m_earOuter.setOrigin({m_earOuter.getRadius(), m_earOuter.getRadius()});
-    m_earOuter.setFillColor(palette.skin);
-    m_earOuter.setOutlineColor(dark);
-    m_earOuter.setOutlineThickness(outlineMain);
-
-    m_earInner.setRadius(1.9f * unit);
-    m_earInner.setScale({1.f, 2.6f / 1.9f});
-    m_earInner.setOrigin({m_earInner.getRadius(), m_earInner.getRadius()});
-    m_earInner.setFillColor(sf::Color(201, 138, 90, 180));
-
-    // Back-of-head panel: covers most of the head when facing up, leaving
-    // only a thin skin rim showing near the chin.
-    m_backPanel.setRadius(27.f * unit);
-    m_backPanel.setScale({29.f / 27.f, 17.f / 27.f});
-    m_backPanel.setOrigin({m_backPanel.getRadius(), m_backPanel.getRadius()});
-    m_backPanel.setFillColor(palette.bandana);
-    m_backPanel.setOutlineColor(dark);
-    m_backPanel.setOutlineThickness(outlineMain);
-
-    m_spark.setOrigin({m_spark.getRadius(), m_spark.getRadius()});
-    m_spark.setFillColor(sf::Color(255, 207, 77, 0));
 }
 
 // =========================
@@ -270,185 +336,58 @@ void CharacterRenderer::update(const Character& character, float deltaSeconds)
 
     // Hop while walking, flat when idle (progress is 1 then).
     const float hop = std::sin(progress * Pi) * HopAmplitude * m_tileSize;
-    const sf::Vector2f bodyPos(m_center.x, m_center.y - hop);
-    m_body.setPosition(bodyPos);
+    m_bodyCenter = {m_center.x, m_center.y - hop};
 
     if (deltaSeconds > 0.f && m_bombAnimElapsed < BombAnimDuration)
         m_bombAnimElapsed = std::min(m_bombAnimElapsed + deltaSeconds, BombAnimDuration);
-    const bool playingBomb = isPlayingBombAnimation();
-    const float bombWave = playingBomb ? std::sin((m_bombAnimElapsed / BombAnimDuration) * Pi) : 0.f;
+    const float bombWave = isPlayingBombAnimation() ? std::sin((m_bombAnimElapsed / BombAnimDuration) * Pi) : 0.f;
 
-    m_facing = character.getFacing();
-    const bool facingUp = m_facing == Direction::Up;
-    const bool facingSide = m_facing == Direction::Left || m_facing == Direction::Right;
-    const float mirror = m_facing == Direction::Right ? -1.f : 1.f; // Left is authored directly, Right mirrors it
-
-    // The head cluster (bandana + face) nudges slightly towards where the
-    // character is facing, the same way the previous single eye dot did.
-    const sf::Vector2f headPos = bodyPos + directionVector(character.getFacing()) * (m_tileSize * FaceNudge);
-
-    const float unit = (m_tileSize * BodyRadiusFraction) / 27.f;
-    const auto relative = [unit](float x, float y) { return sf::Vector2f(x * unit, y * unit); };
-    const auto relativeM = [unit, mirror](float x, float y) { return sf::Vector2f(mirror * x * unit, y * unit); };
-
-    m_bandanaCap.setPosition(headPos); // same dome for every facing
-
-    const float tailAngle = character.isMoving() ? std::sin(progress * TailFlapFrequency * Pi) * TailFlapAmplitudeDeg
-                                                   : 0.f;
-
-    if (facingUp)
-    {
-        // Back of the head: the dome plus a wide panel cover almost all of
-        // it, the knot sits centered and the tails hang down on each side.
-        m_backPanel.setPosition(headPos + relative(0.f, 6.f));
-
-        const sf::Vector2f knotOffset = relative(0.f, -18.f);
-        m_knot.setPosition(headPos + knotOffset);
-        m_tailLeft.setPoint(0, relative(-8.f, 8.f));
-        m_tailLeft.setPoint(1, relative(-10.f, 30.f));
-        m_tailLeft.setPoint(2, relative(-4.f, 18.f));
-        m_tailRight.setPoint(0, relative(8.f, 8.f));
-        m_tailRight.setPoint(1, relative(10.f, 30.f));
-        m_tailRight.setPoint(2, relative(4.f, 18.f));
-        m_tailLeft.setPosition(headPos + knotOffset);
-        m_tailLeft.setRotation(sf::degrees(tailAngle));
-        m_tailRight.setPosition(headPos + knotOffset);
-        m_tailRight.setRotation(sf::degrees(-tailAngle * 0.7f));
-
-        const std::array<sf::Vector2f, 4> dotOffsets = {relative(-14.f, -12.f), relative(14.f, -12.f),
-                                                          relative(-8.f, 6.f), relative(8.f, 6.f)};
-        for (std::size_t i = 0; i < m_bandanaDots.size(); ++i)
-            m_bandanaDots[i].setPosition(headPos + dotOffsets[i]);
-    }
-    else
-    {
-        for (sf::ConvexShape& pennant : m_bandanaPennants)
-            pennant.setPosition(headPos);
-
-        // Down keeps the knot trailing to its own right; profiles trail it
-        // towards the back (away from the leading/visible side).
-        const sf::Vector2f knotOffset = facingSide ? relativeM(24.f, -12.f) : relative(20.f, -16.f);
-        m_knot.setPosition(headPos + knotOffset);
-
-        if (facingSide)
-        {
-            m_tailLeft.setPoint(0, relativeM(-8.f, -8.f));
-            m_tailLeft.setPoint(1, relativeM(6.f, 2.f));
-            m_tailLeft.setPoint(2, relativeM(-4.f, -2.f));
-            m_tailRight.setPoint(0, relativeM(-4.f, -4.f));
-            m_tailRight.setPoint(1, relativeM(4.f, 12.f));
-            m_tailRight.setPoint(2, relativeM(-6.f, 6.f));
-        }
-        else
-        {
-            m_tailLeft.setPoint(0, relative(0.f, 0.f));
-            m_tailLeft.setPoint(1, relative(-14.f, -10.f));
-            m_tailLeft.setPoint(2, relative(-6.f, -16.f));
-            m_tailRight.setPoint(0, relative(0.f, 0.f));
-            m_tailRight.setPoint(1, relative(6.f, -14.f));
-            m_tailRight.setPoint(2, relative(14.f, -6.f));
-        }
-        m_tailLeft.setPosition(headPos + knotOffset);
-        m_tailLeft.setRotation(sf::degrees(tailAngle));
-        m_tailRight.setPosition(headPos + knotOffset);
-        m_tailRight.setRotation(sf::degrees(-tailAngle * 0.7f));
-
-        const std::array<sf::Vector2f, 3> dotOffsets = {relative(-12.f, -14.f), relative(0.f, -18.f),
-                                                          relative(12.f, -14.f)};
-        for (std::size_t i = 0; i < 3; ++i)
-            m_bandanaDots[i].setPosition(headPos + dotOffsets[i]);
-        m_bandanaDots[3].setPosition(m_bandanaDots[0].getPosition()); // unused here, hide by stacking
-
-        // Single centered ear (not shown facing up).
-        m_earOuter.setPosition(headPos);
-        m_earInner.setPosition(headPos + relative(0.f, 0.5f));
-
-        if (facingSide)
-        {
-            // Only the leading cheek is visible: one eye, its blush and the
-            // scar; the eyepatch/strap are on the hidden cheek.
-            m_eye.setScale({1.f, 7.6f / 6.8f});
-            m_eye.setPosition(headPos + relativeM(-20.f, -1.f));
-            m_eyeShine.setPosition(headPos + relativeM(-22.f, -4.f));
-            m_blushLeft.setPosition(headPos + relativeM(-24.f, 6.f));
-
-            const std::array<sf::Vector2f, 5> sideSmile = {relativeM(-25.f, 9.f), relativeM(-22.56f, 10.19f),
-                                                             relativeM(-20.25f, 10.75f), relativeM(-18.06f, 10.69f),
-                                                             relativeM(-16.f, 10.f)};
-            for (std::size_t i = 0; i < sideSmile.size(); ++i)
-                m_smile[i].position = headPos + sideSmile[i];
-
-            const sf::Vector2f scarStart = relativeM(-30.f, 2.f);
-            const sf::Vector2f scarEnd = relativeM(-32.f, 8.f);
-            m_scar.setSize({lengthOf(scarStart, scarEnd), m_tileSize * 0.016f});
-            m_scar.setRotation(sf::degrees(angleDegrees(scarStart, scarEnd)));
-            m_scar.setPosition(headPos + scarStart);
-        }
-        else
-        {
-            m_eye.setScale({1.f, 7.4f / 6.4f});
-            m_eye.setPosition(headPos + relative(-9.f, -1.f));
-            m_eyeShine.setPosition(headPos + relative(-11.f, -4.f));
-            m_blushLeft.setPosition(headPos + relative(-14.f, 6.f));
-            m_blushRight.setPosition(headPos + relative(14.f, 6.f));
-            for (std::size_t i = 0; i < m_smileBase.size(); ++i)
-                m_smile[i].position = headPos + m_smileBase[i];
-
-            const sf::Vector2f scarStart = relative(-16.f, 4.f);
-            const sf::Vector2f scarEnd = relative(-17.f, 9.f);
-            m_scar.setSize({lengthOf(scarStart, scarEnd), m_tileSize * 0.016f});
-            m_scar.setRotation(sf::degrees(angleDegrees(scarStart, scarEnd)));
-            m_scar.setPosition(headPos + scarStart);
-
-            m_eyepatchStrap.setPosition(headPos + relative(-9.f, -7.5f));
-            m_eyepatch.setPosition(headPos + relative(10.f, -1.f));
-        }
-    }
+    const float unit = m_tileSize * BodyRadiusFraction / MockBodyRadius;
+    const float liftRange = LegStepAmplitude * m_tileSize / unit;
 
     // Legs: one lifts, then the other, once per cell crossed; both rest flat
-    // when idle. Facing left/right only shows a single centered leg.
-    const float leftLift = progress < 0.5f ? std::sin(progress / 0.5f * Pi) : 0.f;
-    const float rightLift = progress >= 0.5f ? std::sin((progress - 0.5f) / 0.5f * Pi) : 0.f;
-    if (facingSide)
+    // when idle. Arms only move for the bomb-drop pose.
+    Pose pose;
+    pose.leftLift = (progress < 0.5f ? std::sin(progress / 0.5f * Pi) : 0.f) * liftRange;
+    pose.rightLift = (progress >= 0.5f ? std::sin((progress - 0.5f) / 0.5f * Pi) : 0.f) * liftRange;
+    pose.armAngle = bombWave * MaxRaiseAngleDeg;
+    pose.armNudge = bombWave * 8.f;
+    pose.tailAngle = character.isMoving() ? std::sin(progress * TailFlapFrequency * Pi) * TailFlapAmplitudeDeg : 0.f;
+
+    m_vertices.clear();
+    Mesh mesh(m_vertices);
+    const Direction facing = character.getFacing();
+
+    // Ground spark where the bomb lands, under everything else.
+    if (bombWave > 0.f)
     {
-        const float lift = std::max(leftLift, rightLift);
-        m_legLeft.setPosition(bodyPos + relative(-6.f, 24.f) - sf::Vector2f(0.f, lift * LegStepAmplitude * m_tileSize));
-    }
-    else
-    {
-        m_legLeft.setPosition(bodyPos + relative(-18.f, 24.f)
-                               - sf::Vector2f(0.f, leftLift * LegStepAmplitude * m_tileSize));
-        m_legRight.setPosition(bodyPos + relative(6.f, 24.f)
-                                - sf::Vector2f(0.f, rightLift * LegStepAmplitude * m_tileSize));
+        sf::Color spark = SparkColor;
+        spark.a = static_cast<std::uint8_t>(bombWave * 230.f);
+        const sf::Vector2f sparkPos =
+            m_center + directionVector(facing) * (m_tileSize * 0.55f) + sf::Vector2f(0.f, m_tileSize * 0.12f);
+        const float grow = 1.f + bombWave * 0.4f;
+        mesh.ellipse(sparkPos, m_tileSize * 0.12f * grow, m_tileSize * 0.05f * grow, spark);
     }
 
-    // Arms stay still while walking; they only raise for the bomb-drop pose.
-    // Facing left/right only shows a single centered arm, which nudges up
-    // instead of rotating (it is mostly hidden behind the body).
-    const float armAngle = playingBomb ? bombWave * MaxRaiseAngleDeg : 0.f;
-    if (facingSide)
-    {
-        m_armLeft.setScale({1.f, 10.f / 7.f});
-        m_armLeft.setRotation(sf::degrees(0.f));
-        m_armLeft.setPosition(bodyPos + relative(0.f, 4.f) - sf::Vector2f(0.f, bombWave * 0.1f * m_tileSize));
-    }
-    else
-    {
-        m_armLeft.setScale({1.f, 11.f / 7.f});
-        m_armLeft.setPosition(bodyPos + relative(-25.f, -2.f));
-        m_armLeft.setRotation(sf::degrees(-armAngle));
-        m_armRight.setPosition(bodyPos + relative(25.f, -2.f));
-        m_armRight.setRotation(sf::degrees(armAngle));
-    }
+    const bool profile = facing == Direction::Left || facing == Direction::Right;
+    Painter painter(mesh, m_bodyCenter, unit, facing == Direction::Right);
+    paintLegs(painter, pose, profile);
+    paintArms(painter, pose, profile, m_palette.skin);
+    painter.outlinedEllipse(MockBodyCenter, MockBodyRadius, MockBodyRadius, m_palette.skin, BodyStroke);
 
-    // Ground spark: flashes where the bomb just landed, in front of the
-    // character, then fades back out.
-    const sf::Vector2f sparkPos =
-        m_center + directionVector(character.getFacing()) * (m_tileSize * 0.55f) + sf::Vector2f(0.f, m_tileSize * 0.12f);
-    m_spark.setPosition(sparkPos);
-    sf::Color sparkColor = m_spark.getFillColor();
-    sparkColor.a = static_cast<std::uint8_t>(bombWave * 230.f);
-    m_spark.setFillColor(sparkColor);
+    switch (facing)
+    {
+    case Direction::Down:
+        paintFront(painter, m_palette, pose);
+        break;
+    case Direction::Up:
+        paintBack(painter, m_palette, pose);
+        break;
+    case Direction::Left:
+    case Direction::Right:
+        paintProfile(painter, m_palette, pose);
+        break;
+    }
 }
 
 void CharacterRenderer::triggerBombAnimation() noexcept
@@ -466,9 +405,14 @@ sf::Vector2f CharacterRenderer::getCenter() const noexcept
     return m_center;
 }
 
-const sf::CircleShape& CharacterRenderer::getBody() const noexcept
+sf::Vector2f CharacterRenderer::getBodyCenter() const noexcept
 {
-    return m_body;
+    return m_bodyCenter;
+}
+
+const sf::VertexArray& CharacterRenderer::getVertices() const noexcept
+{
+    return m_vertices;
 }
 
 // =========================
@@ -477,57 +421,7 @@ const sf::CircleShape& CharacterRenderer::getBody() const noexcept
 void CharacterRenderer::draw(sf::RenderTarget& target, sf::RenderStates states) const
 {
     states.transform *= getTransform();
-
-    const bool facingUp = m_facing == Direction::Up;
-    const bool facingSide = m_facing == Direction::Left || m_facing == Direction::Right;
-    const bool twoLimbs = !facingSide; // down and up show both arms/legs
-
-    target.draw(m_spark, states);
-    target.draw(m_legLeft, states);
-    if (twoLimbs)
-        target.draw(m_legRight, states);
-    target.draw(m_armLeft, states);
-    if (twoLimbs)
-        target.draw(m_armRight, states);
-    target.draw(m_body, states);
-
-    target.draw(m_tailLeft, states);
-    target.draw(m_tailRight, states);
-    target.draw(m_bandanaCap, states);
-
-    if (facingUp)
-    {
-        target.draw(m_backPanel, states);
-    }
-    else
-    {
-        for (const sf::ConvexShape& pennant : m_bandanaPennants)
-            target.draw(pennant, states);
-        target.draw(m_earOuter, states);
-        target.draw(m_earInner, states);
-    }
-
-    target.draw(m_knot, states);
-    const std::size_t dotCount = facingUp ? m_bandanaDots.size() : 3;
-    for (std::size_t i = 0; i < dotCount; ++i)
-        target.draw(m_bandanaDots[i], states);
-
-    if (!facingUp)
-    {
-        target.draw(m_blushLeft, states);
-        if (!facingSide)
-            target.draw(m_blushRight, states);
-        target.draw(m_eye, states);
-        target.draw(m_eyeShine, states);
-        target.draw(m_smile, states);
-        target.draw(m_scar, states);
-
-        if (!facingSide)
-        {
-            target.draw(m_eyepatchStrap, states);
-            target.draw(m_eyepatch, states);
-        }
-    }
+    target.draw(m_vertices, states);
 }
 
 } // namespace Bomberman

@@ -2,6 +2,7 @@
 
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 namespace Bomberman
 {
@@ -69,6 +70,16 @@ void Grid::addSpawnPoint(Position position)
         throw std::invalid_argument("Spawn point must be on a walkable tile");
 
     m_spawnPoints.push_back(position);
+}
+
+const std::string& Grid::getTheme() const noexcept
+{
+    return m_theme;
+}
+
+void Grid::setTheme(std::string theme)
+{
+    m_theme = std::move(theme);
 }
 
 // =========================
