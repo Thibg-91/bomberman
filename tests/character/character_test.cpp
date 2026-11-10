@@ -16,13 +16,6 @@ using Bomberman::TileType;
 namespace
 {
 
-// Characters start facing down; a move towards another direction only turns.
-void face(Character& character, Direction direction, const Grid& grid)
-{
-    character.move(direction, grid);
-    ASSERT_EQ(character.getFacing(), direction);
-}
-
 // Walkable 5x5 board; tests add obstacles.
 Grid openGrid()
 {
@@ -74,33 +67,26 @@ TEST(CharacterTest, MovesOneCellInAllDirections)
     const Grid grid = openGrid();
     Character character({2, 2}, 0.f);
 
-    face(character, Direction::Up, grid);
     EXPECT_TRUE(character.move(Direction::Up, grid));
     EXPECT_EQ(character.getPosition(), (Position{2, 1}));
-    face(character, Direction::Right, grid);
     EXPECT_TRUE(character.move(Direction::Right, grid));
     EXPECT_EQ(character.getPosition(), (Position{3, 1}));
-    face(character, Direction::Down, grid);
     EXPECT_TRUE(character.move(Direction::Down, grid));
     EXPECT_EQ(character.getPosition(), (Position{3, 2}));
-    face(character, Direction::Left, grid);
     EXPECT_TRUE(character.move(Direction::Left, grid));
     EXPECT_EQ(character.getPosition(), (Position{2, 2}));
 }
 
-TEST(CharacterTest, FirstMoveTowardsANewDirectionOnlyTurns)
+TEST(CharacterTest, AMoveTowardsANewDirectionTurnsAndStepsAtOnce)
 {
     const Grid grid = openGrid();
     Character character({2, 2}, 1.f);
     ASSERT_EQ(character.getFacing(), Direction::Down);
 
-    EXPECT_FALSE(character.move(Direction::Right, grid));
-    EXPECT_EQ(character.getFacing(), Direction::Right);
-    EXPECT_EQ(character.getPosition(), (Position{2, 2}));
-    EXPECT_FALSE(character.isMoving()); // turning takes no time
-
     EXPECT_TRUE(character.move(Direction::Right, grid));
+    EXPECT_EQ(character.getFacing(), Direction::Right);
     EXPECT_EQ(character.getPosition(), (Position{3, 2}));
+    EXPECT_TRUE(character.isMoving());
 }
 
 TEST(CharacterTest, MovesStraightAwayWhenAlreadyFacingTheDirection)
@@ -120,9 +106,7 @@ TEST(CharacterTest, WallsAndBlocksStopTheCharacter)
     grid.setTile({1, 2}, Tile(TileType::DestructibleBlock));
     Character character({2, 2}, 0.f);
 
-    face(character, Direction::Right, grid);
     EXPECT_FALSE(character.move(Direction::Right, grid));
-    face(character, Direction::Left, grid);
     EXPECT_FALSE(character.move(Direction::Left, grid));
     EXPECT_EQ(character.getPosition(), (Position{2, 2}));
 }
@@ -132,22 +116,25 @@ TEST(CharacterTest, ObstaclesStopTheCharacter)
     const Grid grid = openGrid();
     Character character({2, 2}, 0.f);
     const std::vector<Position> bombs = {{3, 2}};
-    face(character, Direction::Right, grid);
 
     EXPECT_FALSE(character.move(Direction::Right, grid, bombs));
     EXPECT_EQ(character.getPosition(), (Position{2, 2}));
     EXPECT_FALSE(character.execute(CharacterCommand::move(Direction::Right), grid, bombs));
-    face(character, Direction::Down, grid);
     EXPECT_TRUE(character.execute(CharacterCommand::move(Direction::Down), grid, bombs));
 }
 
-TEST(CharacterTest, CanLeaveACellHoldingAnObstacle)
+TEST(CharacterTest, CanLeaveItsBombButNotComeBack)
 {
     const Grid grid = openGrid();
     Character character({2, 2}, 0.f);
+    const std::vector<Position> bomb = {{2, 2}}; // dropped where it stands
 
-    // e.g. a bomb pushed under the character: only the target cell matters.
-    EXPECT_TRUE(character.move(Direction::Down, grid, {{2, 2}}));
+    // Only the target cell matters: stepping off is fine...
+    EXPECT_TRUE(character.move(Direction::Down, grid, bomb));
+    // ...stepping back on it is not.
+    EXPECT_FALSE(character.move(Direction::Up, grid, bomb));
+    EXPECT_EQ(character.getPosition(), (Position{2, 3}));
+    EXPECT_EQ(character.getFacing(), Direction::Up);
 }
 
 TEST(CharacterTest, CannotLeaveTheGrid)
@@ -155,9 +142,7 @@ TEST(CharacterTest, CannotLeaveTheGrid)
     const Grid grid = openGrid();
     Character character({0, 0}, 0.f);
 
-    face(character, Direction::Up, grid);
     EXPECT_FALSE(character.move(Direction::Up, grid));
-    face(character, Direction::Left, grid);
     EXPECT_FALSE(character.move(Direction::Left, grid));
     EXPECT_EQ(character.getPosition(), (Position{0, 0}));
 }
@@ -177,7 +162,6 @@ TEST(CharacterTest, CannotMoveWhileMoving)
 {
     const Grid grid = openGrid();
     Character character({2, 2}, 1.f);
-    face(character, Direction::Right, grid);
 
     ASSERT_TRUE(character.move(Direction::Right, grid));
     EXPECT_TRUE(character.isMoving());
@@ -192,7 +176,6 @@ TEST(CharacterTest, UpdateProgressesAndFinishesTheMove)
 {
     const Grid grid = openGrid();
     Character character({2, 2}, 1.f);
-    face(character, Direction::Right, grid);
     ASSERT_TRUE(character.move(Direction::Right, grid));
 
     EXPECT_FLOAT_EQ(character.getMoveProgress(), 0.f);
@@ -210,7 +193,6 @@ TEST(CharacterTest, NegativeDeltaIsIgnored)
 {
     const Grid grid = openGrid();
     Character character({2, 2}, 1.f);
-    face(character, Direction::Right, grid);
     ASSERT_TRUE(character.move(Direction::Right, grid));
 
     character.update(-5.f);
@@ -224,12 +206,9 @@ TEST(CharacterTest, ExecuteDispatchesCommands)
     grid.setTile({3, 2}, Tile(TileType::DestructibleBlock));
     Character character({2, 2}, 0.f);
 
-    EXPECT_FALSE(character.execute(CharacterCommand::move(Direction::Up), grid)); // turns
     EXPECT_TRUE(character.execute(CharacterCommand::move(Direction::Up), grid));
     EXPECT_EQ(character.getPosition(), (Position{2, 1}));
-    face(character, Direction::Down, grid);
     EXPECT_TRUE(character.execute(CharacterCommand::move(Direction::Down), grid));
-    face(character, Direction::Right, grid);
     EXPECT_FALSE(character.execute(CharacterCommand::move(Direction::Right), grid));
     // Bomb commands are handled by the caller, which owns the BombManager.
     EXPECT_FALSE(character.execute(CharacterCommand::pushBomb(), grid));
@@ -258,10 +237,7 @@ TEST(CharacterTest, WorksOnTheFirstLevel)
     Character character(grid.getSpawnPoints().front(), 0.f);
 
     // The spawn is in a corner: walls above and on the left, free cell on the right.
-    face(character, Direction::Up, grid);
     EXPECT_FALSE(character.move(Direction::Up, grid));
-    face(character, Direction::Left, grid);
     EXPECT_FALSE(character.move(Direction::Left, grid));
-    face(character, Direction::Right, grid);
     EXPECT_TRUE(character.move(Direction::Right, grid));
 }

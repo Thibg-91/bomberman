@@ -132,8 +132,7 @@ std::optional<CharacterCommand> Bot::decide(const GameEngine& engine, PlayerId i
 
     // 4. Go somewhere worth it, 5. or roam.
     const GameRules& rules = engine.getRules();
-    const ReachMap reach =
-        ReachMap::explore(danger, me.getPosition(), me.getFacing(), 0, rules.moveTicks, rules.turnTicks);
+    const ReachMap reach = ReachMap::explore(danger, me.getPosition(), 0, rules.moveTicks);
     if (const std::optional<Decision> decision = goSomewhere(engine, id, danger, reach, canBomb))
         return *decision;
     return roam(engine, id, reach);
@@ -210,9 +209,8 @@ bool Bot::trapsAnOpponent(const GameEngine& engine, PlayerId id, Position cell) 
         if (other == id || !opponent.isAlive() || !danger.isThreatened(opponent.getPosition())
             || manhattan(opponent.getPosition(), cell) > stats.blastRadius + 4)
             continue;
-        const ReachMap reach =
-            ReachMap::explore(danger, opponent.getPosition(), opponent.getFacing(), engine.getCooldownTicks(other),
-                              rules.moveTicks, rules.turnTicks, ReachMap::Scope::UntilSafe);
+        const ReachMap reach = ReachMap::explore(danger, opponent.getPosition(), engine.getCooldownTicks(other),
+                                                 rules.moveTicks, ReachMap::Scope::UntilSafe);
         if (!reach.canSurvive())
             return true;
     }
@@ -226,11 +224,11 @@ bool Bot::canEscapeAfterPlacing(const GameEngine& engine, PlayerId id, Position 
     const int delay = engine.getRules().placeBombTicks;
     BombManager bombs = engine.getBombManager();
     if (!bombs.placeBomb(cell, engine.getGrid(), id, stats.maxBombs, stats.blastRadius)
-        || !canEscapeWith(engine, id, bombs, me.getFacing(), delay))
+        || !canEscapeWith(engine, id, bombs, delay))
         return false;
 
-    // The obvious answer of a nearby opponent: a bomb of its own, right now,
-    // that could cut the way out.
+    // The obvious answer of a nearby opponent: a bomb of its own, right now
+    // where it stands, that could cut the way out.
     for (PlayerId other = 0; other < engine.getPlayerCount() && m_profile.anticipationRange > 0; ++other)
     {
         const Character& opponent = engine.getCharacter(other);
@@ -239,21 +237,19 @@ bool Bot::canEscapeAfterPlacing(const GameEngine& engine, PlayerId id, Position 
             continue;
         const PlayerStats& theirs = engine.getStats(other);
         BombManager answered = bombs;
-        if (answered.placeBomb(step(opponent.getPosition(), opponent.getFacing()), engine.getGrid(), other,
-                               theirs.maxBombs, theirs.blastRadius)
-            && !canEscapeWith(engine, id, answered, me.getFacing(), delay))
+        if (answered.placeBomb(opponent.getPosition(), engine.getGrid(), other, theirs.maxBombs, theirs.blastRadius)
+            && !canEscapeWith(engine, id, answered, delay))
             return false;
     }
     return true;
 }
 
-bool Bot::canEscapeWith(const GameEngine& engine, PlayerId id, const BombManager& bombs, Direction facing,
-                        int delay) const
+bool Bot::canEscapeWith(const GameEngine& engine, PlayerId id, const BombManager& bombs, int delay) const
 {
     const GameRules& rules = engine.getRules();
     const DangerMap danger = perceive(engine, id, m_profile.reactionTicks, bombs);
-    return ReachMap::explore(danger, engine.getCharacter(id).getPosition(), facing, delay, rules.moveTicks,
-                             rules.turnTicks, ReachMap::Scope::UntilSafe)
+    return ReachMap::explore(danger, engine.getCharacter(id).getPosition(), delay, rules.moveTicks,
+                             ReachMap::Scope::UntilSafe)
         .canSurvive();
 }
 
@@ -269,13 +265,13 @@ Bot::Decision Bot::escape(const GameEngine& engine, PlayerId id, const DangerMap
         if (const std::optional<Decision> decision = pushOntoOpponent(engine, id))
             return *decision;
 
-    const ReachMap reach = ReachMap::explore(danger, position, me.getFacing(), 0, rules.moveTicks, rules.turnTicks,
-                                             ReachMap::Scope::UntilSafe);
+    const ReachMap reach = ReachMap::explore(danger, position, 0, rules.moveTicks, ReachMap::Scope::UntilSafe);
     if (const std::optional<Position> safe = reach.nearestSafeCell())
         return headFor(reach, *safe, Intent::Escape);
 
     // No way out on foot: punch a neighbouring bomb away if that opens one
-    // (turning towards it first when needed).
+    // (turning towards it first when needed: moving towards a bomb only
+    // turns).
     const Grid& grid = engine.getGrid();
     for (const Direction dir : Directions)
     {
@@ -285,7 +281,7 @@ Bot::Decision Bot::escape(const GameEngine& engine, PlayerId id, const DangerMap
             continue;
         const bool facing = dir == me.getFacing();
         const int delay = (facing ? 0 : rules.turnTicks) + rules.pushBombTicks;
-        if (canEscapeWith(engine, id, bombs, dir, delay))
+        if (canEscapeWith(engine, id, bombs, delay))
         {
             m_intent = Intent::PushBomb;
             m_target = bombCell;
@@ -301,25 +297,24 @@ Bot::Decision Bot::escape(const GameEngine& engine, PlayerId id, const DangerMap
 std::optional<Bot::Decision> Bot::actWhereItStands(const GameEngine& engine, PlayerId id, const DangerMap& danger,
                                                    bool canBomb)
 {
-    const Character& me = engine.getCharacter(id);
-    const Position faced = step(me.getPosition(), me.getFacing());
+    // The bomb is dropped where the bot stands.
+    const Position here = engine.getCharacter(id).getPosition();
     const std::uint64_t tick = engine.getTick();
 
-    if (canBomb && engine.getGrid().isWalkable(faced) && !engine.getBombManager().hasBombAt(faced)
-        && !isRejected(faced, tick))
+    if (canBomb && !engine.getBombManager().hasBombAt(here) && !isRejected(here, tick))
     {
-        int value = bombValue(engine, id, danger, faced);
-        if (m_profile.trapValue > 0 && trapsAnOpponent(engine, id, faced))
+        int value = bombValue(engine, id, danger, here);
+        if (m_profile.trapValue > 0 && trapsAnOpponent(engine, id, here))
             value += m_profile.trapValue;
         if (value > 0)
         {
-            if (canEscapeAfterPlacing(engine, id, faced))
+            if (canEscapeAfterPlacing(engine, id, here))
             {
                 m_intent = Intent::PlaceBomb;
-                m_target = faced;
+                m_target = here;
                 return Decision{CharacterCommand::placeBomb()};
             }
-            reject(faced, tick); // worth it but deadly: look elsewhere for a while
+            reject(here, tick); // worth it but deadly: look elsewhere for a while
         }
     }
     return std::nullopt;
@@ -344,8 +339,7 @@ std::optional<Bot::Decision> Bot::pushOntoOpponent(const GameEngine& engine, Pla
     // Only worth it if more opponents end up in the blast than before.
     const int before = countIn(Blast::compute(faced, bomb->getBlastRadius(), grid).cells(), opponents);
     const int after = countIn(Blast::compute(*landing, bomb->getBlastRadius(), grid).cells(), opponents);
-    if (after <= before
-        || !canEscapeWith(engine, id, bombs, me.getFacing(), engine.getRules().pushBombTicks))
+    if (after <= before || !canEscapeWith(engine, id, bombs, engine.getRules().pushBombTicks))
         return std::nullopt;
 
     m_intent = Intent::PushBomb;
@@ -358,12 +352,10 @@ std::optional<Bot::Decision> Bot::goSomewhere(const GameEngine& engine, PlayerId
 {
     struct Goal
     {
-        Position cell;
-        std::optional<Direction> facing; // with bombCell: the way to face to drop it
+        Position cell; // where to go (and drop the bomb, for BreakBlocks and Attack)
         int value;
         Intent intent;
         int arrival;
-        std::optional<Position> bombCell; // where the bomb would be dropped
     };
 
     const Grid& grid = engine.getGrid();
@@ -399,27 +391,16 @@ std::optional<Bot::Decision> Bot::goSomewhere(const GameEngine& engine, PlayerId
 
             if (const Upgrade* upgrade = upgradeAt(engine, cell);
                 upgrade && m_profile.upgradeValue > 0 && isUseful(upgrade->type, stats, engine.getRules().upgrades))
-                goals.push_back(
-                    Goal{cell, std::nullopt, m_profile.upgradeValue, Intent::Collect, arrival, std::nullopt});
+                goals.push_back(Goal{cell, m_profile.upgradeValue, Intent::Collect, arrival});
 
-            if (!canBomb)
+            // A cell to drop a bomb on. Where it stands: already handled by
+            // actWhereItStands() (not worth it, or deadly).
+            if (!canBomb || cell == me.getPosition() || bombs.hasBombAt(cell) || isRejected(cell, tick))
                 continue;
-            for (const Direction dir : Directions)
-            {
-                const Position target = step(cell, dir);
-                if (!grid.isWalkable(target) || bombs.hasBombAt(target) || isRejected(target, tick))
-                    continue;
-                // Where it stands, facing that way: already handled by
-                // actWhereItStands() (not worth it, or deadly).
-                if (cell == me.getPosition() && dir == me.getFacing())
-                    continue;
-                const int spotArrival = reach.safeArrival(cell, dir);
-                bool attack = false;
-                const int value = spotArrival == ReachMap::Unreachable ? 0 : valueAt(target, attack);
-                if (value > 0)
-                    goals.push_back(Goal{cell, dir, value, attack ? Intent::Attack : Intent::BreakBlocks,
-                                         spotArrival, target});
-            }
+            bool attack = false;
+            const int value = valueAt(cell, attack);
+            if (value > 0)
+                goals.push_back(Goal{cell, value, attack ? Intent::Attack : Intent::BreakBlocks, arrival});
         }
     if (goals.empty())
         return std::nullopt;
@@ -441,7 +422,7 @@ std::optional<Bot::Decision> Bot::goSomewhere(const GameEngine& engine, PlayerId
         if (attacks.size() > static_cast<std::size_t>(TrapChecksPerDecision))
             attacks.resize(static_cast<std::size_t>(TrapChecksPerDecision));
         for (const std::size_t i : attacks)
-            if (trapsAnOpponent(engine, id, *goals[i].bombCell))
+            if (trapsAnOpponent(engine, id, goals[i].cell))
                 goals[i].value += m_profile.trapValue;
     }
 
@@ -459,7 +440,7 @@ std::optional<Bot::Decision> Bot::goSomewhere(const GameEngine& engine, PlayerId
             }
     }
     const Goal& goal = goals[chosen];
-    return headFor(reach, goal.cell, goal.intent, goal.facing);
+    return headFor(reach, goal.cell, goal.intent);
 }
 
 Bot::Decision Bot::roam(const GameEngine& engine, PlayerId id, const ReachMap& reach)
@@ -533,11 +514,11 @@ void Bot::reject(Position cell, std::uint64_t tick)
     m_rejected.push_back(Rejected{cell, tick + static_cast<std::uint64_t>(RejectTicks)});
 }
 
-Bot::Decision Bot::headFor(const ReachMap& reach, Position cell, Intent intent, std::optional<Direction> facing)
+Bot::Decision Bot::headFor(const ReachMap& reach, Position cell, Intent intent)
 {
     m_intent = intent;
     m_target = cell;
-    const std::optional<Direction> dir = facing ? reach.firstStep(cell, *facing) : reach.firstStep(cell);
+    const std::optional<Direction> dir = reach.firstStep(cell);
     if (!dir)
         return std::nullopt; // waiting is the fastest way (an explosion has to pass first)
     return CharacterCommand::move(*dir);

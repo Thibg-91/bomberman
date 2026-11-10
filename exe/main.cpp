@@ -223,15 +223,9 @@ int main(int argc, char* argv[])
     constexpr std::array<sf::Keyboard::Key, LevelCount> levelKeys = {sf::Keyboard::Key::Num1, sf::Keyboard::Key::Num2,
                                                                       sf::Keyboard::Key::Num3, sf::Keyboard::Key::Num4};
 
-    // Direction the player has just turned to with the key still held: a turn
-    // consumes the key press, so walking that way needs a new press (then
-    // holding it keeps walking).
-    std::optional<Bomberman::Direction> turnKeyHeld;
-
     auto play = [&]() {
         match = startMatch(maps[static_cast<std::size_t>(setup.map)].grid, setup, desktopMode.size);
         waitForRelease = true;
-        turnKeyHeld.reset();
         bombRenderers.clear();
         window.setView(centeredView(*match, desktopMode.size));
     };
@@ -308,22 +302,16 @@ int main(int argc, char* argv[])
         Bomberman::GameEngine& engine = match->engine;
         Bomberman::GridRenderer& gridRenderer = match->gridRenderer;
 
-        if (turnKeyHeld && !keyboard.isHeld(*turnKeyHeld))
-            turnKeyHeld.reset();
-
         // Input only produces a command; the engine decides at its next tick
         // whether the player is ready to execute it (actions are paced by
         // GameRules delays). The bots are asked by the engine itself, at
         // every tick where they are ready.
         if (waitForRelease && !keyboard.poll())
             waitForRelease = false;
+        // A move is immediate (holding the key keeps walking); Space drops a
+        // bomb where the player stands.
         if (const auto command = waitForRelease ? std::nullopt : keyboard.poll())
-        {
-            const bool consumedTurn =
-                command->type == Bomberman::CharacterCommand::Type::Move && turnKeyHeld == command->direction;
-            if (!consumedTurn)
-                engine.submitCommand(match->player, *command);
-        }
+            engine.submitCommand(match->player, *command);
 
         // The referee speeds the match up once the player is dead (the
         // opponents fight it out) and stops it once it is over.
@@ -333,10 +321,6 @@ int main(int argc, char* argv[])
         {
             switch (event.type)
             {
-            case Bomberman::GameEvent::Type::PlayerTurned:
-                if (event.playerId == match->player)
-                    turnKeyHeld = engine.getCharacter(match->player).getFacing();
-                break;
             case Bomberman::GameEvent::Type::BombPlaced:
                 match->characterRenderers[static_cast<std::size_t>(event.playerId)].triggerBombAnimation();
                 break;

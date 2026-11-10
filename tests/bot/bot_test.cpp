@@ -186,20 +186,20 @@ TEST(BotTest, OwnBombsAreKnownAtOnceTheOthersAfterTheReactionTime)
     GameEngine engine(std::move(grid));
     const PlayerId me = *engine.addPlayer();
     const PlayerId other = *engine.addPlayer();
-    engine.submitCommand(me, CharacterCommand::placeBomb());    // on (1, 2)
-    engine.submitCommand(other, CharacterCommand::placeBomb()); // on (7, 8)
+    engine.submitCommand(me, CharacterCommand::placeBomb());    // on (1, 1)
+    engine.submitCommand(other, CharacterCommand::placeBomb()); // on (7, 7)
     engine.tick(); // both bombs have been ticking for 1 tick
 
     const int reaction = 30;
     DangerMap danger = Bot::perceive(engine, me, reaction, engine.getBombManager());
     EXPECT_TRUE(danger.isThreatened({1, 2}));
-    EXPECT_FALSE(danger.isThreatened({7, 8}));
-    EXPECT_EQ(danger.freeFrom({7, 8}), DangerMap::Forever); // still blocks the way
+    EXPECT_FALSE(danger.isThreatened({7, 6}));
+    EXPECT_EQ(danger.freeFrom({7, 7}), DangerMap::Forever); // still blocks the way
 
     for (int i = 0; i < reaction - 1; ++i)
         engine.tick();
     danger = Bot::perceive(engine, me, reaction, engine.getBombManager());
-    EXPECT_TRUE(danger.isThreatened({7, 8}));
+    EXPECT_TRUE(danger.isThreatened({7, 6}));
     EXPECT_TRUE(Bot::perceive(engine, other, 0, engine.getBombManager()).isThreatened({1, 2}));
 }
 
@@ -218,13 +218,13 @@ TEST_P(BotDifficultyTest, ABotGetsOutOfTheWayOfABomb)
     GameEngine engine(fromRows({
         "#######",
         "#..P..#",
-        "#.....#",
         "#..P..#",
+        "#.....#",
         "#######",
     }));
-    const PlayerId human = *engine.addPlayer(); // (3, 1), facing down
-    const PlayerId bot = *engine.addPlayer();   // (3, 3)
-    engine.submitCommand(human, CharacterCommand::placeBomb()); // on (3, 2): the bot is in the blast
+    const PlayerId human = *engine.addPlayer(); // (3, 1)
+    const PlayerId bot = *engine.addPlayer();   // (3, 2), right under
+    engine.submitCommand(human, CharacterCommand::placeBomb()); // on (3, 1): the bot is in the blast
     engine.tick();
     Bot* brain = control(engine, bot, GetParam());
 
@@ -245,17 +245,13 @@ TEST_P(BotDifficultyTest, ABotGetsOutOfTheWayOfABomb)
 TEST_P(BotDifficultyTest, ItNeverDropsABombItCouldNotEscape)
 {
     // A dead end: a bomb on (2, 1) would break the block but leave no way
-    // out of (1, 1).
+    // out (the bomb blocks (2, 1), (1, 1) is in its blast).
     GameEngine engine(fromRows({
         "#####",
         "#P.+#",
         "#####",
     }));
     const PlayerId id = *engine.addPlayer();
-    // Face the block, then let the bot decide.
-    engine.submitCommand(id, CharacterCommand::move(Direction::Right));
-    engine.tick();
-    run(engine, engine.getCooldownTicks(id));
     control(engine, id, GetParam());
 
     const std::vector<GameEvent> events = run(engine, 5 * TicksPerSecond);
@@ -294,22 +290,21 @@ TEST_P(BotLevelTest, ALoneBotClearsBlocksWithoutBlowingItselfUp)
 // =========================
 // Decisions
 // =========================
-TEST(BotTest, ItDropsABombToBreakTheBlockItFacesWhenItCanGetAway)
+TEST(BotTest, ItDropsABombNextToABlockWhenItCanGetAway)
 {
     GameEngine engine(fromRows({
         "######",
         "#P...#",
-        "#....#",
         "#+...#",
         "######",
     }));
-    const PlayerId id = *engine.addPlayer(); // (1, 1), facing down: the bomb would go on (1, 2)
+    const PlayerId id = *engine.addPlayer(); // (1, 1): the bomb goes under it, next to the block
     Bot* bot = control(engine, id, BotDifficulty::Hard);
 
     const std::vector<GameEvent> events = run(engine, 1);
 
     ASSERT_EQ(count(events, GameEvent::Type::BombPlaced), 1);
-    EXPECT_EQ(events.front().position, (Position{1, 2}));
+    EXPECT_EQ(events.front().position, (Position{1, 1}));
     EXPECT_EQ(bot->getIntent(), Bot::Intent::PlaceBomb);
 }
 
@@ -326,7 +321,7 @@ TEST(BotTest, ItWalksToASpotFromWhichToBreakBlocks)
 
     run(engine, 1);
     EXPECT_EQ(bot->getIntent(), Bot::Intent::BreakBlocks);
-    // The only spot: on (4, 1) facing right, to drop the bomb on (5, 1).
+    // The only spot: on (5, 1), right above the block.
     const std::vector<GameEvent> events = run(engine, 2 * TicksPerSecond);
     ASSERT_GE(count(events, GameEvent::Type::BombPlaced, id), 1);
 }
@@ -410,7 +405,7 @@ TEST(BotTest, ATrapperDropsABombThatLeavesTheOpponentNoWayOut)
 {
     const std::vector<std::string> rows = {
         "#######",
-        "#P..P.#",
+        "#P.P..#",
         "####.##",
         "#######",
     };
@@ -423,10 +418,7 @@ TEST(BotTest, ATrapperDropsABombThatLeavesTheOpponentNoWayOut)
     {
         GameEngine engine(fromRows(rows), rules);
         const PlayerId opponent = *engine.addPlayer(); // (1, 1), dead end
-        const PlayerId id = *engine.addPlayer();       // (4, 1)
-        engine.submitCommand(id, CharacterCommand::move(Direction::Left)); // face (3, 1)
-        engine.tick();
-        run(engine, engine.getCooldownTicks(id));
+        const PlayerId id = *engine.addPlayer();       // (3, 1), the corridor's entrance
         BotProfile profile = trapper;
         profile.trapValue = traps ? 100 : 0;
         control(engine, id, profile);
@@ -438,14 +430,14 @@ TEST(BotTest, ATrapperDropsABombThatLeavesTheOpponentNoWayOut)
         {
             run(engine, 3 * TicksPerSecond);
             EXPECT_FALSE(engine.getCharacter(opponent).isAlive());
-            EXPECT_TRUE(engine.getCharacter(id).isAlive()); // got away through (4, 2)
+            EXPECT_TRUE(engine.getCharacter(id).isAlive()); // got away through (4, 1) and (4, 2)
         }
     }
 }
 
-// Next to its own bomb (so in its blast), with an opponent two cells
-// further: a hard bot punches the bomb onto the opponent, a normal one just
-// walks away.
+// Next to its own bomb (so in its blast), facing it, with an opponent two
+// cells further: a hard bot punches the bomb onto the opponent, a normal
+// one just walks away.
 TEST(BotTest, AHardBotPunchesABombOntoAnOpponent)
 {
     const std::vector<std::string> rows = {
@@ -459,12 +451,16 @@ TEST(BotTest, AHardBotPunchesABombOntoAnOpponent)
         GameEngine engine(fromRows(rows));
         const PlayerId id = *engine.addPlayer();       // (1, 1)
         const PlayerId opponent = *engine.addPlayer(); // (4, 1)
-        engine.submitCommand(id, CharacterCommand::move(Direction::Right)); // face (2, 1)
-        engine.tick();
-        run(engine, engine.getCooldownTicks(id));
-        engine.submitCommand(id, CharacterCommand::placeBomb()); // on (2, 1)
-        engine.tick();
-        run(engine, engine.getCooldownTicks(id));
+        const auto act = [&](const CharacterCommand& command) {
+            engine.submitCommand(id, command);
+            engine.tick();
+            run(engine, engine.getCooldownTicks(id));
+        };
+        act(CharacterCommand::move(Direction::Right)); // to (2, 1)
+        act(CharacterCommand::placeBomb());            // on (2, 1)
+        act(CharacterCommand::move(Direction::Left));  // back to (1, 1)
+        act(CharacterCommand::move(Direction::Right)); // the bomb blocks the way: only turns towards it
+        ASSERT_EQ(engine.getCharacter(id).getPosition(), (Position{1, 1}));
         Bot* bot = control(engine, id, difficulty);
 
         const std::vector<GameEvent> events = run(engine, 1);
@@ -488,17 +484,14 @@ TEST(BotTest, AHardBotPunchesABombOntoAnOpponent)
 
 TEST(BotTest, ASpotWhereABombWouldBeDeadlyIsLeftAsideForAWhile)
 {
-    // The bomb on (2, 1) would break the block but there is no way out:
-    // the bot does not stay there forever trying.
+    // A bomb on (2, 1) would break the block but there is no way out: the
+    // bot does not stay there forever trying.
     GameEngine engine(fromRows({
         "#####",
-        "#P.+#",
+        "#.P+#",
         "#####",
     }));
     const PlayerId id = *engine.addPlayer();
-    engine.submitCommand(id, CharacterCommand::move(Direction::Right));
-    engine.tick();
-    run(engine, engine.getCooldownTicks(id));
     Bot* bot = control(engine, id, BotDifficulty::Hard);
 
     run(engine, 1);

@@ -58,8 +58,7 @@ TEST(CharacterRendererTest, MovingCharacterSlidesBetweenCells)
 {
     const Grid grid(5, 5);
     Character character({1, 1}, 1.f);
-    character.move(Direction::Right, grid); // turns first
-    ASSERT_TRUE(character.move(Direction::Right, grid));
+    ASSERT_TRUE(character.move(Direction::Right, grid)); // moves at once
 
     CharacterRenderer renderer(10.f);
     renderer.update(character);
@@ -170,7 +169,6 @@ TEST(CharacterRendererTest, BombAnimationStillRunsWhateverTheFacing)
     CharacterRenderer renderer(10.f);
     const Grid grid(5, 5);
     Character character({2, 2}, 0.f);
-    character.move(Direction::Left, grid); // turns
     ASSERT_TRUE(character.move(Direction::Left, grid));
 
     renderer.triggerBombAnimation();
@@ -261,4 +259,29 @@ TEST(CharacterRendererTest, BandanaUsesThePaletteColor)
     EXPECT_TRUE(usesColor(renderer.getVertices(), blue.bandana));
     EXPECT_TRUE(usesColor(renderer.getVertices(), blue.skin));
     EXPECT_FALSE(usesColor(renderer.getVertices(), CharacterRenderer::paletteForPlayer(0).bandana));
+}
+
+TEST(CharacterRendererTest, TheBombSparkLightsUpUnderTheCharacter)
+{
+    // The bomb is dropped on the character's own cell: the spark (drawn
+    // first) is centered under it, whatever it faces.
+    const Grid grid(5, 5);
+    for (const Direction direction : {Direction::Left, Direction::Up})
+    {
+        Character character({2, 2}, 0.f);
+        character.move(direction, grid);
+        CharacterRenderer renderer(10.f);
+        renderer.triggerBombAnimation();
+        renderer.update(character, 0.2f);
+
+        float minX = 1e9f;
+        float maxX = -1e9f;
+        const sf::VertexArray& vertices = renderer.getVertices();
+        for (std::size_t i = 0; i < vertices.getVertexCount() && vertices[i].color.r == 255; ++i)
+        {
+            minX = std::min(minX, vertices[i].position.x);
+            maxX = std::max(maxX, vertices[i].position.x);
+        }
+        EXPECT_NEAR((minX + maxX) / 2.f, renderer.getCenter().x, 0.05f);
+    }
 }

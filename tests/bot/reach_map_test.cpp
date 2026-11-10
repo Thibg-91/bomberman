@@ -29,7 +29,6 @@ namespace
 constexpr int TickRate = 60;
 constexpr float Tick = 1.f / static_cast<float>(TickRate);
 constexpr int Move = 10; // GameRules::moveTicks
-constexpr int Turn = 5;  // GameRules::turnTicks
 
 Bomb ticking(Position position, int ticks, int blastRadius = 1)
 {
@@ -39,9 +38,9 @@ Bomb ticking(Position position, int ticks, int blastRadius = 1)
     return bomb;
 }
 
-ReachMap explore(const DangerMap& danger, Position start, Direction facing, int delay = 0)
+ReachMap explore(const DangerMap& danger, Position start, int delay = 0)
 {
-    return ReachMap::explore(danger, start, facing, delay, Move, Turn);
+    return ReachMap::explore(danger, start, delay, Move);
 }
 
 // A grid made of walls except for the '.' cells of rows.
@@ -62,24 +61,23 @@ Grid fromRows(const std::vector<std::string>& rows)
 
 } // namespace
 
-TEST(ReachMapTest, WithoutDangerItIsAShortestPathCountingTurns)
+TEST(ReachMapTest, WithoutDangerItIsAShortestPathOfImmediateMoves)
 {
     const Grid grid(7, 7);
-    const ReachMap reach = explore(DangerMap::predict({}, grid, TickRate), {1, 1}, Direction::Right);
+    const ReachMap reach = explore(DangerMap::predict({}, grid, TickRate), {1, 1});
 
     EXPECT_EQ(reach.getStart(), (Position{1, 1}));
     EXPECT_EQ(reach.safeArrival({1, 1}), 0);
     EXPECT_EQ(reach.firstStep({1, 1}), std::nullopt); // already there
-    EXPECT_EQ(reach.safeArrival({1, 1}, Direction::Down), Turn);
-    EXPECT_EQ(reach.firstStep({1, 1}, Direction::Down), Direction::Down); // move(Down) only turns
 
+    // No turn to pay any more: every step costs moveTicks.
     EXPECT_EQ(reach.safeArrival({3, 1}), 2 * Move);
     EXPECT_EQ(reach.firstStep({3, 1}), Direction::Right);
-    EXPECT_EQ(reach.safeArrival({1, 3}), Turn + 2 * Move);
+    EXPECT_EQ(reach.safeArrival({1, 3}), 2 * Move);
     EXPECT_EQ(reach.firstStep({1, 3}), Direction::Down);
-    // Right first saves a turn: 2 moves, 1 turn, 2 moves.
-    EXPECT_EQ(reach.safeArrival({3, 3}), 4 * Move + Turn);
-    EXPECT_EQ(reach.firstStep({3, 3}), Direction::Right);
+    EXPECT_EQ(reach.safeArrival({3, 3}), 4 * Move);
+    const std::optional<Direction> towardsCorner = reach.firstStep({3, 3});
+    EXPECT_TRUE(towardsCorner == Direction::Down || towardsCorner == Direction::Right);
     EXPECT_GT(reach.getExploredStates(), 0);
 }
 
@@ -91,7 +89,7 @@ TEST(ReachMapTest, WallsAndBlocksCannotBeCrossed)
         "#..+..#",
         "#######",
     });
-    const ReachMap reach = explore(DangerMap::predict({}, grid, TickRate), {1, 1}, Direction::Right);
+    const ReachMap reach = explore(DangerMap::predict({}, grid, TickRate), {1, 1});
 
     EXPECT_TRUE(reach.isSafelyReachable({2, 2}));
     EXPECT_FALSE(reach.isSafelyReachable({4, 1}));
@@ -104,12 +102,15 @@ TEST(ReachMapTest, TheWayOutOfABlastIsTheNearestSafeCell)
 {
     const Grid grid(7, 7);
     const DangerMap danger = DangerMap::predict({Bomb({2, 1})}, grid, TickRate);
-    const ReachMap reach = explore(danger, {1, 1}, Direction::Down);
+    const ReachMap reach = explore(danger, {1, 1});
 
     ASSERT_TRUE(reach.canSurvive());
-    EXPECT_EQ(reach.nearestSafeCell(), (Position{1, 2}));
-    EXPECT_EQ(reach.firstStep({1, 2}), Direction::Down);
+    // One step up, down or left gets out of the cross: the first in
+    // reading order wins.
+    EXPECT_EQ(reach.nearestSafeCell(), (Position{1, 0}));
+    EXPECT_EQ(reach.firstStep({1, 0}), Direction::Up);
     EXPECT_EQ(reach.safeArrival({1, 2}), Move);
+    EXPECT_EQ(reach.firstStep({1, 2}), Direction::Down);
     // Its own cell is only safe for good once the bomb has exploded.
     EXPECT_GT(reach.safeArrival({1, 1}), DangerMap::explosionTick(Bomb({2, 1}), TickRate));
 }
@@ -122,7 +123,7 @@ TEST(ReachMapTest, ADeadEndWithABombHasNoWayOut)
         "#####",
     });
     const DangerMap danger = DangerMap::predict({Bomb({3, 1}, Bomb::DefaultFuseDuration, 3)}, grid, TickRate);
-    const ReachMap reach = explore(danger, {1, 1}, Direction::Right);
+    const ReachMap reach = explore(danger, {1, 1});
 
     EXPECT_FALSE(reach.canSurvive());
     EXPECT_EQ(reach.nearestSafeCell(), std::nullopt);
@@ -146,7 +147,7 @@ TEST(ReachMapTest, WaitingLetsAnExplosionPassFirst)
     ASSERT_TRUE(danger.isHitAt({2, 1}, 3));
     ASSERT_FALSE(danger.isThreatened({1, 1}));
 
-    const ReachMap reach = explore(danger, {1, 1}, Direction::Right);
+    const ReachMap reach = explore(danger, {1, 1});
 
     EXPECT_EQ(reach.safeArrival({6, 1}), 4 + 5 * Move);
     EXPECT_EQ(reach.firstStep({6, 1}), std::nullopt); // wait
@@ -163,11 +164,24 @@ TEST(ReachMapTest, ACellClearedByAnExplosionCanBeCrossedAfterwards)
     const DangerMap danger = DangerMap::predict({bomb}, grid, TickRate);
     ASSERT_EQ(danger.freeFrom({3, 1}), 10);
 
-    const ReachMap reach = explore(danger, {1, 1}, Direction::Right);
+    const ReachMap reach = explore(danger, {1, 1});
 
     EXPECT_EQ(reach.safeArrival({3, 1}), 2 * Move); // (2, 1) at tick 0, (3, 1) at tick 10
     EXPECT_EQ(reach.safeArrival({4, 1}), 3 * Move);
     EXPECT_EQ(reach.safeArrival({5, 1}), 4 * Move); // where the bomb was
+}
+
+// The character dropped a bomb where it stands: it can step off it, but
+// not come back before the explosion.
+TEST(ReachMapTest, ACharacterLeavesItsOwnBombButCannotComeBack)
+{
+    const Grid grid(7, 7);
+    const DangerMap danger = DangerMap::predict({Bomb({3, 3})}, grid, TickRate);
+    const ReachMap reach = explore(danger, {3, 3}, 15); // right after dropping it
+
+    ASSERT_TRUE(reach.canSurvive());
+    EXPECT_EQ(reach.safeArrival({2, 2}), 15 + 2 * Move); // out of the cross in two steps
+    EXPECT_GT(reach.safeArrival({3, 3}), DangerMap::explosionTick(Bomb({3, 3}), TickRate));
 }
 
 TEST(ReachMapTest, TheStartCellMustSurviveTheDelay)
@@ -175,10 +189,10 @@ TEST(ReachMapTest, TheStartCellMustSurviveTheDelay)
     const Grid grid(7, 7);
 
     const DangerMap later = DangerMap::predict({Bomb({2, 1})}, grid, TickRate);
-    EXPECT_TRUE(explore(later, {1, 1}, Direction::Down, 15).canSurvive());
+    EXPECT_TRUE(explore(later, {1, 1}, 15).canSurvive());
 
     const DangerMap soon = DangerMap::predict({ticking({2, 1}, 110)}, grid, TickRate); // tick 9
-    const ReachMap reach = explore(soon, {1, 1}, Direction::Down, 15);
+    const ReachMap reach = explore(soon, {1, 1}, 15);
     EXPECT_FALSE(reach.canSurvive());
     EXPECT_EQ(reach.safeArrival({1, 1}), ReachMap::Unreachable);
 }
@@ -191,7 +205,7 @@ TEST(ReachMapTest, FollowingTheFirstStepsInTheEngineEscapesTheBomb)
     grid.addSpawnPoint({1, 1});
     GameEngine engine(std::move(grid));
     const PlayerId id = *engine.addPlayer();
-    engine.submitCommand(id, CharacterCommand::placeBomb()); // on (1, 2), facing down
+    engine.submitCommand(id, CharacterCommand::placeBomb()); // on (1, 1), under the character
     engine.tick();
     ASSERT_EQ(engine.getBombManager().getBombs().size(), 1u);
 
@@ -203,7 +217,7 @@ TEST(ReachMapTest, FollowingTheFirstStepsInTheEngineEscapesTheBomb)
             const Bomberman::Character& character = engine.getCharacter(id);
             const DangerMap danger =
                 DangerMap::predict(engine.getBombManager().getBombs(), engine.getGrid(), TickRate);
-            const ReachMap reach = explore(danger, character.getPosition(), character.getFacing());
+            const ReachMap reach = explore(danger, character.getPosition());
             const std::optional<Position> safe = reach.nearestSafeCell();
             ASSERT_TRUE(safe.has_value());
             if (const std::optional<Direction> dir = reach.firstStep(*safe))

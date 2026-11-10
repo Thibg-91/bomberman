@@ -34,10 +34,10 @@ Tous partagent le même gabarit (corps rond, bras, jambes, mêmes coordonnées),
 
 | Touche        | Action                                                        |
 |---------------|---------------------------------------------------------------|
-| `Z Q S D`     | Déplacement haut / gauche / bas / droite (touche maintenue)   |
-| `Espace`      | Pose une bombe sur la case devant le personnage               |
+| `Z Q S D`     | Déplacement haut / gauche / bas / droite, immédiat (touche maintenue : avance en continu) |
+| `Espace`      | Pose une bombe sur la case du personnage                      |
 | `Entrée`      | Pousse la bombe située devant le personnage                   |
-| `Tab`         | Revient à l'écran de choix du pirate                          |
+| `Tab`         | Revient au menu de lancement                                  |
 | `1` à `4`     | Recommence sur une autre map, avec le même pirate             |
 
 Les touches sont configurables via `KeyboardController::Bindings`.
@@ -53,14 +53,12 @@ Les touches sont configurables via `KeyboardController::Bindings`.
   Les bombes bloquent aussi : `Character` ne les connaît pas, l'appelant passe leurs cases
   en `obstacles` à `move()` / `execute()` (`BombManager::getBombPositions()` dans `exe/main.cpp`).
   Seule la case visée compte : on peut toujours quitter une case qui contient une bombe.
-- Orientation d'abord : une commande `move(direction)` vers une direction que le personnage
-  ne regarde pas encore le fait seulement pivoter (instantané, `move()` renvoie `false`) ;
-  une fois orienté, les commandes suivantes dans cette direction le font avancer. On peut
-  donc se tourner vers une case bloquée.
-- Clavier (`exe/main.cpp`) : un pivot « consomme » l'appui ; tant que la touche reste
-  enfoncée, le personnage ne bouge pas. Il faut la relâcher et la ré-appuyer pour avancer
-  (la garder enfoncée ensuite le fait avancer en continu). `KeyboardController::isHeld()`
-  sert à détecter le relâchement.
+- Déplacement immédiat : une commande `move(direction)` oriente le personnage dans cette
+  direction et le fait avancer aussitôt si la case est libre (`move()` renvoie `true`). Vers
+  une case bloquée (mur, caisse, bombe), il pivote seulement (`false`) : c'est ainsi qu'on
+  se tourne vers une bombe pour la pousser avec `Entrée`.
+- Pose de bombe : la bombe tombe **sur la case du personnage**. Il peut en sortir (seule la
+  case visée compte) mais pas y revenir tant qu'elle n'a pas explosé.
 - Le personnage ne casse jamais de bloc lui-même : seules les explosions de bombes
   détruisent les blocs destructibles. `Character::execute` reçoit la grille en lecture
   seule. Les commandes de bombe (`placeBomb()`, `pushBomb()`) renvoient `false` : elles

@@ -43,12 +43,6 @@ sf::Vector2f cellCenter(Position position, float tileSize)
     return {(static_cast<float>(position.x) + 0.5f) * tileSize, (static_cast<float>(position.y) + 0.5f) * tileSize};
 }
 
-sf::Vector2f directionVector(Direction direction)
-{
-    const Position offset = step({0, 0}, direction);
-    return {static_cast<float>(offset.x), static_cast<float>(offset.y)};
-}
-
 sf::Vector2f rotateAround(sf::Vector2f point, sf::Vector2f pivot, float degrees)
 {
     const float a = degrees * Pi / 180.f;
@@ -829,13 +823,13 @@ void CharacterRenderer::update(const Character& character, float deltaSeconds)
     Mesh mesh(m_vertices);
     const Direction facing = character.getFacing();
 
-    // Ground spark where the bomb lands, under everything else.
+    // Ground spark where the bomb lands (under the character's feet: it is
+    // dropped on its own cell), under everything else.
     if (bombWave > 0.f)
     {
         sf::Color spark = SparkColor;
         spark.a = static_cast<std::uint8_t>(bombWave * 230.f);
-        const sf::Vector2f sparkPos =
-            m_center + directionVector(facing) * (m_tileSize * 0.55f) + sf::Vector2f(0.f, m_tileSize * 0.12f);
+        const sf::Vector2f sparkPos = m_center + sf::Vector2f(0.f, m_tileSize * 0.38f);
         const float grow = 1.f + bombWave * 0.4f;
         mesh.ellipse(sparkPos, m_tileSize * 0.12f * grow, m_tileSize * 0.05f * grow, spark);
     }

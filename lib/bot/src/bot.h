@@ -32,9 +32,9 @@ namespace Bomberman
 //      good (ReachMap over the DangerMap), or punch a bomb away when there
 //      is no way out.
 //   2. Hesitate (easy levels): sometimes stay idle for a moment.
-//   3. Act where it stands: drop a bomb on the cell it faces if that is
-//      worth it (blocks to destroy, an opponent in the blast or trapped)
-//      and it could still escape afterwards.
+//   3. Act where it stands: drop a bomb on its own cell if that is worth
+//      it (blocks to destroy, an opponent in the blast or trapped) and it
+//      could still escape afterwards (stepping off the bomb).
 //   4. Go somewhere: score every cell it can safely reach (upgrades, spots
 //      to bomb blocks or opponents from) by value / travel time and take
 //      the first step towards the best one.
@@ -107,9 +107,9 @@ private:
     // Whether player id could still get away after dropping a bomb on cell.
     [[nodiscard]] bool canEscapeAfterPlacing(const GameEngine& engine, PlayerId id, Position cell) const;
     // Whether player id, once the bombs are as in bombs and it has spent
-    // delay ticks on its cell facing facing, can still reach a safe cell.
+    // delay ticks on its cell, can still reach a safe cell.
     [[nodiscard]] bool canEscapeWith(const GameEngine& engine, PlayerId id, const BombManager& bombs,
-                                     Direction facing, int delay) const;
+                                     int delay) const;
 
     // A decision: the command to execute now, or nothing to wait this tick.
     using Decision = std::optional<CharacterCommand>;
@@ -126,8 +126,7 @@ private:
 
     [[nodiscard]] bool isRejected(Position cell, std::uint64_t tick) const;
     void reject(Position cell, std::uint64_t tick);
-    Decision headFor(const ReachMap& reach, Position cell, Intent intent,
-                     std::optional<Direction> facing = std::nullopt);
+    Decision headFor(const ReachMap& reach, Position cell, Intent intent);
     Decision idle(std::uint64_t tick);
 
     // =========================

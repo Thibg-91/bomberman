@@ -287,14 +287,17 @@ void GameEngine::execute(Player& p, const CharacterCommand& command)
         break;
     }
     case CharacterCommand::Type::PlaceBomb:
-        // The bomb is dropped on the cell the character faces, with the
-        // character's current blast radius.
-        if (m_bombManager.placeBomb(facedCell, m_grid, p.id, p.stats.maxBombs, p.stats.blastRadius))
+    {
+        // The bomb is dropped where the character stands, with its current
+        // blast radius. The character can step off it but not back on it.
+        const Position cell = character.getPosition();
+        if (m_bombManager.placeBomb(cell, m_grid, p.id, p.stats.maxBombs, p.stats.blastRadius))
         {
             p.cooldownTicks = m_rules.placeBombTicks;
-            emit(GameEvent::Type::BombPlaced, p.id, facedCell);
+            emit(GameEvent::Type::BombPlaced, p.id, cell);
         }
         break;
+    }
     case CharacterCommand::Type::PushBomb:
         // Does nothing without a bomb in front of the character. The bomb
         // slides up to pushDistance cells, stopping before obstacles.

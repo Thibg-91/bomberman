@@ -30,9 +30,9 @@ GameEngine engineWith(const std::vector<Position>& spawns)
     return engine;
 }
 
-// Player id drops a bomb on the cell below it (players face down at
-// first) and the fuse burns out; the referee looks after every tick.
-void bombBelow(GameEngine& engine, MatchReferee& referee, PlayerId id)
+// Player id drops a bomb where it stands (and stays there) and the fuse
+// burns out; the referee looks after every tick.
+void bombHere(GameEngine& engine, MatchReferee& referee, PlayerId id)
 {
     engine.submitCommand(id, CharacterCommand::placeBomb());
     for (int i = 0; i <= FuseTicks; ++i)
@@ -61,7 +61,7 @@ TEST(MatchRefereeTest, TheLastOneStandingWins)
 {
     GameEngine engine = engineWith({{1, 1}, {5, 1}});
     MatchReferee referee(0);
-    bombBelow(engine, referee, 1); // the opponent blows itself up
+    bombHere(engine, referee, 1); // the opponent blows itself up
 
     EXPECT_TRUE(referee.isOver());
     EXPECT_EQ(referee.getWinner(), 0);
@@ -71,21 +71,21 @@ TEST(MatchRefereeTest, AfterThePlayerDiesTheOpponentsFightItOutFaster)
 {
     GameEngine engine = engineWith({{1, 1}, {5, 5}, {5, 1}});
     MatchReferee referee(0);
-    bombBelow(engine, referee, 0); // the player blows itself up
+    bombHere(engine, referee, 0); // the player blows itself up
 
     ASSERT_EQ(referee.getPhase(), Phase::Spectating);
     EXPECT_FLOAT_EQ(referee.gameSeconds(0.25f), 0.25f * MatchReferee::SpectatorSpeed);
 
-    bombBelow(engine, referee, 1); // then the second player
+    bombHere(engine, referee, 1); // then the second player
     EXPECT_TRUE(referee.isOver());
     EXPECT_EQ(referee.getWinner(), 2);
 }
 
 TEST(MatchRefereeTest, DyingTogetherIsADraw)
 {
-    GameEngine engine = engineWith({{1, 1}, {1, 3}}); // both next to (1, 2)
+    GameEngine engine = engineWith({{1, 1}, {1, 2}}); // side by side
     MatchReferee referee(0);
-    bombBelow(engine, referee, 0);
+    bombHere(engine, referee, 0);
 
     EXPECT_TRUE(referee.isOver());
     EXPECT_EQ(referee.getWinner(), std::nullopt);
@@ -95,7 +95,7 @@ TEST(MatchRefereeTest, SpectatingForTooLongEndsInADraw)
 {
     GameEngine engine = engineWith({{1, 1}, {5, 5}, {5, 1}});
     MatchReferee referee(0);
-    bombBelow(engine, referee, 0);
+    bombHere(engine, referee, 0);
     ASSERT_EQ(referee.getPhase(), Phase::Spectating);
 
     for (int second = 0; second < static_cast<int>(MatchReferee::SpectatorTimeLimit) - 1; ++second)
@@ -114,7 +114,7 @@ TEST(MatchRefereeTest, AloneOnTheMapTheMatchOnlyEndsWithThePlayer)
     referee.update(engine, 1.f);
     EXPECT_EQ(referee.getPhase(), Phase::Playing);
 
-    bombBelow(engine, referee, 0);
+    bombHere(engine, referee, 0);
     EXPECT_TRUE(referee.isOver());
     EXPECT_EQ(referee.getWinner(), std::nullopt);
 }
@@ -123,7 +123,7 @@ TEST(MatchRefereeTest, AnOverMatchIsFrozenAndStaysOver)
 {
     GameEngine engine = engineWith({{1, 1}, {5, 1}});
     MatchReferee referee(0);
-    bombBelow(engine, referee, 1);
+    bombHere(engine, referee, 1);
     ASSERT_TRUE(referee.isOver());
 
     EXPECT_FLOAT_EQ(referee.gameSeconds(1.f), 0.f);

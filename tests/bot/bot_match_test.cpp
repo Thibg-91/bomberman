@@ -131,21 +131,23 @@ TEST_P(BotFrameRateTest, BotsPlayTheSameWhateverTheFrameRate)
     EXPECT_EQ(framed, reference);
 }
 
-// Duels on every shipped map, both spawn orders: the hard bot must win
-// clearly more often than the easy one.
+// Duels on every shipped map, both spawn orders, four seeds (most duels
+// between bots end in a draw after 3 minutes: they dodge well): the hard
+// bot must win clearly more often than the easy one.
 TEST(BotMatchTest, HardBotsWinMoreDuelsThanEasyOnes)
 {
     int hardWins = 0;
     int easyWins = 0;
     for (int level = 1; level <= 4; ++level)
+        for (int seed = 0; seed < 4; ++seed)
         for (int hardFirst = 0; hardFirst < 2; ++hardFirst)
         {
-            GameEngine engine = shippedMatch(level, 900);
+            GameEngine engine = shippedMatch(level, 900 + static_cast<std::uint64_t>(seed));
             const PlayerId hard = hardFirst ? 0 : 1;
             fillWithBots(engine,
                          hardFirst ? std::vector<BotDifficulty>{BotDifficulty::Hard, BotDifficulty::Easy}
                                    : std::vector<BotDifficulty>{BotDifficulty::Easy, BotDifficulty::Hard},
-                         13);
+                         13 * static_cast<std::uint64_t>(seed));
             for (int i = 0; i < 180 * TicksPerSecond && engine.countAlivePlayers() > 1; ++i)
                 engine.tick();
 
@@ -156,5 +158,5 @@ TEST(BotMatchTest, HardBotsWinMoreDuelsThanEasyOnes)
         }
 
     EXPECT_GT(hardWins, easyWins);
-    EXPECT_GE(hardWins, 2);
+    EXPECT_GE(hardWins, 4);
 }

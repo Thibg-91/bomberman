@@ -52,12 +52,13 @@ public:
     // Make time pass (seconds).
     void update(float deltaSeconds) noexcept;
 
-    // If the character does not face direction yet, it only turns towards it
-    // (returns false). Otherwise it moves one cell that way if the cell is
+    // Faces direction and moves one cell that way at once if the cell is
     // walkable and not one of the obstacles (cells holding entities that
     // block movement, e.g. bombs: Character does not know about them, the
-    // caller lists them). Returns whether the character moved. Ignored
-    // (returns false, no turn) while the character is still moving.
+    // caller lists them; only the target cell is checked, so a character
+    // can always step off the bomb it stands on). Towards a blocked cell it
+    // only turns. Returns whether the character moved. Ignored (returns
+    // false, no turn) while the character is still moving.
     bool move(Direction direction, const Grid& grid, const std::vector<Position>& obstacles = {}) noexcept;
 
     // Dispatch a command; returns whether it had an effect. Bomb commands

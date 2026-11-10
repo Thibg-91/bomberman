@@ -15,7 +15,7 @@ Tous les délais sont exprimés en **nombre entier de ticks** (`GameRules`) : la
 | Action | Ticks | Durée |
 |---|---|---|
 | Déplacement d'une case (`moveTicks`) | 10 | ~0,17 s |
-| Demi-tour / changement d'orientation (`turnTicks`) | 5 | ~0,08 s |
+| Se tourner vers une case bloquée (`turnTicks`) | 5 | ~0,08 s |
 | Pose de bombe (`placeBombTicks`) | 15 | 0,25 s |
 | Poussée de bombe (`pushBombTicks`) | 15 | 0,25 s |
 
@@ -46,7 +46,7 @@ Une commande reçue pendant qu'un joueur est occupé est **abandonnée**, jamais
 
 ## Intégration (`exe/main.cpp`)
 
-Chaque frame : lecture du clavier → `submitCommand` → `advance(dt)` (les bots décident à l'intérieur, tick par tick) → traitement des événements → mise à jour des renderers à partir de l'état du moteur. La règle « un demi-tour consomme l'appui » reste côté clavier (`turnKeyHeld`, alimenté par l'événement `PlayerTurned`), car c'est une question d'ergonomie de l'entrée, pas une règle du jeu.
+Chaque frame : lecture du clavier → `submitCommand` → `advance(dt)` (les bots décident à l'intérieur, tick par tick) → traitement des événements → mise à jour des renderers à partir de l'état du moteur. Les déplacements sont immédiats (pas de demi-tour préalable) : maintenir une touche fait avancer en continu. Une bombe est posée sur la case du joueur, qui peut en sortir mais pas y revenir.
 
 ## Évolutions prévues
 
