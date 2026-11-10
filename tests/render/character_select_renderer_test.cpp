@@ -35,12 +35,13 @@ sf::FloatRect characterBounds(const Bomberman::CharacterRenderer& renderer)
 
 } // namespace
 
-TEST(CharacterSelectRendererTest, WrapLoopsThroughTheFiveModels)
+TEST(CharacterSelectRendererTest, WrapLoopsThroughTheSixModels)
 {
     EXPECT_EQ(CharacterSelectRenderer::wrap(0, 1), 1);
-    EXPECT_EQ(CharacterSelectRenderer::wrap(4, 1), 0);
-    EXPECT_EQ(CharacterSelectRenderer::wrap(0, -1), 4);
-    EXPECT_EQ(CharacterSelectRenderer::wrap(2, -7), 0);
+    EXPECT_EQ(CharacterSelectRenderer::wrap(4, 1), 5);
+    EXPECT_EQ(CharacterSelectRenderer::wrap(5, 1), 0);
+    EXPECT_EQ(CharacterSelectRenderer::wrap(0, -1), 5);
+    EXPECT_EQ(CharacterSelectRenderer::wrap(2, -8), 0);
 }
 
 TEST(CharacterSelectRendererTest, TheViewFitsTheDesignInAnyScreen)
@@ -97,12 +98,17 @@ TEST(CharacterSelectRendererTest, TheSelectedPirateStandsForwardBiggerAndBright)
         CharacterSelectRenderer screen;
         screen.update(AllCharacterModels[selected]);
 
-        // Mock-up slots: x = 250 + 275 * index; the selected body at y = 520.
-        EXPECT_NEAR(screen.getSelectedCenter().x, 250.f + 275.f * static_cast<float>(selected), 1e-3f);
+        // Six slots: x = 230 + 228 * index; the selected body at y = 520.
+        EXPECT_NEAR(screen.getSelectedCenter().x, 230.f + 228.f * static_cast<float>(selected), 1e-3f);
         EXPECT_NEAR(screen.getSelectedCenter().y, 520.f, 1e-3f);
 
         const auto& characters = screen.getCharacters();
         const sf::FloatRect chosen = characterBounds(characters[selected]);
+        // 300 vs 200 design units: the selected one is 1.5 times bigger
+        // than itself when another one is selected.
+        CharacterSelectRenderer elsewhere;
+        elsewhere.update(AllCharacterModels[(selected + 1) % AllCharacterModels.size()]);
+        EXPECT_GT(chosen.size.y, characterBounds(elsewhere.getCharacters()[selected]).size.y * 1.2f);
         for (std::size_t i = 0; i < characters.size(); ++i)
         {
             if (i == selected)
@@ -111,9 +117,7 @@ TEST(CharacterSelectRendererTest, TheSelectedPirateStandsForwardBiggerAndBright)
                 continue;
             }
             EXPECT_FLOAT_EQ(characters[i].getBrightness(), CharacterSelectRenderer::DimmedBrightness);
-            // 300 vs 200 design units: the selected one is 1.5 times bigger.
             const sf::FloatRect other = characterBounds(characters[i]);
-            EXPECT_GT(chosen.size.y, other.size.y * 1.2f);
             // Every pirate stays on screen.
             EXPECT_GE(other.position.x, 0.f);
             EXPECT_LE(other.position.x + other.size.x, CharacterSelectRenderer::DesignSize.x);

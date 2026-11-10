@@ -124,6 +124,7 @@ private:
     sf::Vector2f m_bodyCenter;
     float m_bombAnimElapsed; // >= BombAnimDuration means idle
     float m_deathElapsed = -1.f; // < 0: alive
+    float m_elapsed = 0.f;       // seconds, for idle animations (the spaniel's tail)
     sf::VertexArray m_vertices;
 };
 

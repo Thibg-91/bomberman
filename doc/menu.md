@@ -9,7 +9,7 @@ De haut en bas, une rangée par réglage, chacune précédée d'un badge doré q
 | Rangée | Badge | Valeurs |
 |---|---|---|
 | Mode | sabres croisés | solo contre l'ordinateur (le boucanier face à un squelette) ; multijoueur local (deux boucaniers et un cadenas : pas encore jouable) |
-| Pirate | bandana | les 5 modèles de l'équipage ; le choisi est plus grand, saute dans un cercle doré, les autres sont assombris |
+| Pirate | bandana | les 6 membres de l'équipage (dont le chien) ; le choisi est plus grand, saute dans un cercle doré, les autres sont assombris |
 | Carte | rose des vents | une vraie miniature de chaque carte (`GridRenderer` dessiné petit) ; le niveau passé en ligne de commande est proposé en premier |
 | Difficulté | tête de mort | 1, 2 ou 3 têtes de mort sur un fanion vert, orange ou rouge (facile, normal, difficile) |
 | Adversaires | deux squelettes | 1, 2 ou 3 adversaires, chaque nombre dans sa propre case de bois avec autant de points dessous |

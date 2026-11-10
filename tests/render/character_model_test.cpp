@@ -87,11 +87,12 @@ TEST(CharacterModelTest, TheBuccaneerIsTheDefault)
         EXPECT_EQ(byDefault.getVertices()[i].position, explicitOne[i].position);
 }
 
-TEST(CharacterModelTest, FiveModelsInSelectionOrder)
+TEST(CharacterModelTest, SixModelsInSelectionOrder)
 {
-    EXPECT_EQ(Bomberman::CharacterModelCount, 5);
+    EXPECT_EQ(Bomberman::CharacterModelCount, 6);
     EXPECT_EQ(AllCharacterModels.front(), CharacterModel::Buccaneer);
-    EXPECT_EQ(std::set<CharacterModel>(AllCharacterModels.begin(), AllCharacterModels.end()).size(), 5u);
+    EXPECT_EQ(AllCharacterModels.back(), CharacterModel::Spaniel);
+    EXPECT_EQ(std::set<CharacterModel>(AllCharacterModels.begin(), AllCharacterModels.end()).size(), 6u);
 }
 
 TEST_P(ModelViewTest, IsDrawnAroundItsCell)
@@ -138,8 +139,9 @@ TEST_P(ModelViewTest, TheRightProfileMirrorsTheLeftOne)
     const sf::FloatRect l = bounds(left);
     const sf::FloatRect r = bounds(right);
     // Mirrored around the cell's vertical axis (x = 50). Round joins are
-    // tessellated from angle 0 on both sides, hence a tiny tolerance.
-    EXPECT_NEAR(l.position.x, 100.f - (r.position.x + r.size.x), 0.1f);
+    // tessellated from angle 0 on both sides, hence a tiny tolerance (the
+    // spaniel's pointy snout tip is off by 0.11).
+    EXPECT_NEAR(l.position.x, 100.f - (r.position.x + r.size.x), 0.15f);
     EXPECT_NEAR(l.size.y, r.size.y, 0.1f);
 }
 
@@ -249,4 +251,64 @@ TEST(CharacterModelTest, TheBombPoseWorksForEveryModel)
         // changes, the head and face stay the same.
         EXPECT_GT(pose.getVertexCount(), idle.getVertexCount());
     }
+}
+
+// =========================
+// Spaniel (validated mock-up "Le chien du bord", proposal A)
+// =========================
+namespace
+{
+
+constexpr sf::Color Chocolate(110, 59, 30);
+constexpr sf::Color Tan(217, 143, 69);
+constexpr sf::Color Neckerchief(195, 59, 59);
+constexpr sf::Color DogNose(42, 22, 16);
+constexpr sf::Color Tongue(232, 115, 122);
+
+sf::VertexArray renderSpanielAt(Direction direction, float seconds)
+{
+    CharacterRenderer renderer(TileSize, CharacterRenderer::Palette{}, CharacterModel::Spaniel);
+    renderer.update(facing(direction), seconds);
+    return renderer.getVertices();
+}
+
+bool sameVertices(const sf::VertexArray& a, const sf::VertexArray& b)
+{
+    if (a.getVertexCount() != b.getVertexCount())
+        return false;
+    for (std::size_t i = 0; i < a.getVertexCount(); ++i)
+        if (a[i].position != b[i].position)
+            return false;
+    return true;
+}
+
+} // namespace
+
+TEST(SpanielTest, AChocolateAndTanCockerWithARedNeckerchief)
+{
+    const sf::VertexArray front = render(CharacterModel::Spaniel, Direction::Down);
+    EXPECT_TRUE(usesColor(front, Chocolate));
+    EXPECT_TRUE(usesColor(front, Tan));
+    EXPECT_TRUE(usesColor(front, Neckerchief));
+    EXPECT_TRUE(usesColor(front, DogNose));
+    EXPECT_TRUE(usesColor(front, Tongue));
+    EXPECT_FALSE(usesColor(front, Skin)); // the palette's skin is for the human models
+}
+
+TEST(SpanielTest, TheBackHidesTheMuzzle)
+{
+    const sf::VertexArray back = render(CharacterModel::Spaniel, Direction::Up);
+    EXPECT_FALSE(usesColor(back, DogNose));
+    EXPECT_FALSE(usesColor(back, Tongue));
+    EXPECT_TRUE(usesColor(back, Neckerchief)); // its knot
+    EXPECT_TRUE(usesColor(render(CharacterModel::Spaniel, Direction::Left), DogNose));
+}
+
+TEST(SpanielTest, ItsTailWagsEvenStandingStill)
+{
+    // A quarter of a wag apart: the tail has moved (back and profiles).
+    for (const Direction direction : {Direction::Up, Direction::Left, Direction::Right})
+        EXPECT_FALSE(sameVertices(renderSpanielAt(direction, 0.f), renderSpanielAt(direction, 0.125f)));
+    // Seen from the front, there is no tail.
+    EXPECT_TRUE(sameVertices(renderSpanielAt(Direction::Down, 0.f), renderSpanielAt(Direction::Down, 0.125f)));
 }

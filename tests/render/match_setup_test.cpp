@@ -146,7 +146,7 @@ TEST(MatchSetupTest, EveryRowWrapsAround)
         EXPECT_EQ(setup.pirate, AllCharacterModels[i % AllCharacterModels.size()]);
     }
     setup.change(-1);
-    EXPECT_EQ(setup.pirate, CharacterModel::Revenant);
+    EXPECT_EQ(setup.pirate, AllCharacterModels.back());
 
     setup.focus = Row::Map;
     setup.change(-1);
@@ -274,7 +274,7 @@ TEST(MatchSetupRendererTest, TheChosenPirateStandsBiggerInItsSlotAndIsDrawnLast)
     const CharacterRenderer& chosen = menu.getCharacters().back();
     EXPECT_EQ(chosen.getModel(), CharacterModel::Parrot);
     EXPECT_FLOAT_EQ(chosen.getBrightness(), 1.f);
-    EXPECT_NEAR(menu.getSelectedPirateCenter().x, 1085.f, 1e-3f); // fourth slot
+    EXPECT_NEAR(menu.getSelectedPirateCenter().x, 980.f, 1e-3f); // fourth slot
 
     const float chosenWidth = bounds(chosen.getVertices()).size.x;
 

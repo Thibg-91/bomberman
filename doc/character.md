@@ -11,7 +11,7 @@ Ce document décrit le personnage jouable : logique, contrôles et affichage.
 
 ## Choix du pirate
 
-Le jeu s'ouvre sur l'écran de sélection (maquette validée « Choix du pirate », disposition « Sur le pont ») : les cinq pirates sont alignés sur le pont, le pirate choisi s'avance, grandit et saute dans un cercle doré, les autres restent en retrait, assombris. Il n'y a pas de texte : le projet n'embarque aucune police.
+Le pirate se choisit dans la rangée « pirate » du menu de lancement (voir [menu.md](menu.md)) : les six membres de l'équipage sont alignés sur le pont, le choisi s'avance, grandit et saute dans un cercle doré, les autres restent en retrait, assombris. Il n'y a pas de texte : le projet n'embarque aucune police. (L'ancien écran « Choix du pirate », `CharacterSelectRenderer`, n'est plus affiché : voir `TODO.md`.)
 
 | Pirate | `CharacterModel` | Signes distinctifs |
 |---|---|---|
@@ -20,8 +20,9 @@ Le jeu s'ouvre sur l'écran de sélection (maquette validée « Choix du pirate 
 | La Vigie | `Lookout` | bonnet rayé bleu et blanc à pompon rouge, taches de rousseur |
 | Le Perroquet | `Parrot` | plumes vertes, ailes, bec jaune crochu, crête rouge, pattes orange |
 | Le Revenant | `Revenant` | squelette aux orbites lumineuses, bandana violet sombre |
+| Le Chien de bord | `Spaniel` | cocker chocolat et feu (maquette validée « Le chien du bord », proposition A) : longues oreilles ondulées plus foncées que la robe, mèche sur le crâne, museau, sourcils et pattes feu, langue qui dépasse, foulard rouge à pois noué dans le dos, queue qui remue (même à l'arrêt) |
 
-Tous partagent le même gabarit (corps rond, bras, jambes, mêmes coordonnées), donc la marche, le saut et la pose de bombe fonctionnent pour chacun ; seuls la tête, le visage et les couleurs changent. Le choix est purement visuel : tous les pirates jouent de la même façon.
+Tous partagent le même gabarit (corps rond, bras, jambes, mêmes coordonnées), donc la marche, le saut et la pose de bombe fonctionnent pour chacun ; seuls la tête, le visage et les couleurs changent. Les oreilles du chien pendent hors de la tête (décalées de 5 unités vers l'extérieur de face et de dos) pour ne pas couvrir ses yeux ; de profil, l'oreille visible pend derrière l'œil. Le choix est purement visuel : tous les pirates jouent de la même façon.
 
 | Touche (sélection) | Action |
 |---|---|

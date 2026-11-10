@@ -25,7 +25,7 @@ constexpr sf::Color GoldGlow(212, 169, 74, 89);
 constexpr sf::Color DotOff(255, 255, 255, 89);
 
 // Mock-up layout (design units).
-constexpr std::array<float, CharacterModelCount> SlotX = {250.f, 525.f, 800.f, 1075.f, 1350.f};
+constexpr std::array<float, CharacterModelCount> SlotX = {230.f, 458.f, 686.f, 914.f, 1142.f, 1370.f};
 constexpr float DimmedY = 470.f;
 constexpr float DimmedSize = 200.f; // mock-up view box (100 units) drawn this big
 constexpr float SelectedY = 520.f;
@@ -139,7 +139,8 @@ void CharacterSelectRenderer::update(CharacterModel selected, float deltaSeconds
     for (int i = 0; i < CharacterModelCount; ++i)
     {
         const bool on = i == selectedIndex;
-        const sf::Vector2f c(DesignSize.x / 2.f + static_cast<float>(i - 2) * 34.f, 820.f);
+        const sf::Vector2f c(DesignSize.x / 2.f + (static_cast<float>(i) - static_cast<float>(CharacterModelCount - 1) / 2.f) * 34.f,
+                             820.f);
         const float r = on ? 11.f : 8.f;
         front.circle(c, r, on ? Gold : DotOff);
         front.ring(c, r, 4.f, Ink);

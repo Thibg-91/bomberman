@@ -18,13 +18,14 @@ enum class CharacterModel
     Captain,   // gold-trimmed tricorne with a skull, handlebar mustache
     Lookout,   // striped beanie with a pompom, freckles
     Parrot,    // green feathers, hooked beak, red crest, wings and orange feet
-    Revenant   // skeleton with glowing eye sockets and a dark bandana
+    Revenant,  // skeleton with glowing eye sockets and a dark bandana
+    Spaniel    // chocolate and tan cocker: long wavy ears, red polka-dot neckerchief, wagging tail
 };
 
-inline constexpr int CharacterModelCount = 5;
+inline constexpr int CharacterModelCount = 6;
 inline constexpr std::array<CharacterModel, CharacterModelCount> AllCharacterModels = {
     CharacterModel::Buccaneer, CharacterModel::Captain, CharacterModel::Lookout, CharacterModel::Parrot,
-    CharacterModel::Revenant};
+    CharacterModel::Revenant,  CharacterModel::Spaniel};
 
 } // namespace Bomberman
 

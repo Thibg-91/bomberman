@@ -43,7 +43,7 @@ constexpr std::array<sf::Color, MatchSetup::DifficultyCount> DifficultyColors = 
     sf::Color(90, 166, 75), sf::Color(224, 138, 46), sf::Color(195, 59, 59)};
 
 // Mock-up layout (design units).
-constexpr std::array<float, CharacterModelCount> PirateX = {380.f, 615.f, 850.f, 1085.f, 1320.f};
+constexpr std::array<float, CharacterModelCount> PirateX = {335.f, 550.f, 765.f, 980.f, 1195.f, 1410.f};
 constexpr float PirateY = 320.f;
 constexpr float PirateSize = 150.f;
 constexpr float SelectedPirateY = 315.f;

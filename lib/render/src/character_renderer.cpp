@@ -361,6 +361,144 @@ void paintBlush(Painter& p, sf::Vector2f c)
     p.ellipse(c, 5.f, 3.2f, Blush);
 }
 
+// ---------- Spaniel (validated mock-up "Le chien du bord", proposal A) ----------
+constexpr sf::Color Chocolate(110, 59, 30);
+constexpr sf::Color EarFur(78, 40, 18);
+constexpr sf::Color EarWave(58, 29, 12);
+constexpr sf::Color Tan(217, 143, 69);
+constexpr sf::Color DogNose(42, 22, 16);
+constexpr sf::Color Tongue(232, 115, 122);
+constexpr sf::Color Neckerchief(195, 59, 59);
+constexpr sf::Color NeckerchiefDot(255, 246, 230);
+constexpr float TailWagAmplitudeDeg = 14.f;
+constexpr float TailWagFrequency = 2.f; // wags per second
+
+std::vector<sf::Vector2f> mirroredX(std::vector<sf::Vector2f> points)
+{
+    for (sf::Vector2f& point : points)
+        point.x = 100.f - point.x;
+    return points;
+}
+
+std::vector<sf::Vector2f> shiftedX(std::vector<sf::Vector2f> points, float dx)
+{
+    for (sf::Vector2f& point : points)
+        point.x += dx;
+    return points;
+}
+
+// The left ear of the front view as drawn in the mock-up (before it is
+// moved 5 units outwards), wavy at the bottom.
+std::vector<sf::Vector2f> spanielEar()
+{
+    return path({31.f, 31.f}, {{{15.f, 33.f}, {15.f, 52.f}},
+                               {{14.f, 68.f}, {19.f, 78.f}},
+                               {{22.f, 83.f}, {26.f, 78.f}},
+                               {{29.f, 83.f}, {33.f, 77.f}},
+                               {{37.f, 70.f}, {37.f, 54.f}},
+                               {{37.f, 38.f}, {31.f, 31.f}}});
+}
+
+// One ear with its two darker waves; dx moves it, mirror makes it the
+// right one.
+void paintSpanielEar(Painter& p, float dx, bool mirror)
+{
+    const auto place = [&](std::vector<sf::Vector2f> points) {
+        points = shiftedX(std::move(points), dx);
+        return mirror ? mirroredX(std::move(points)) : points;
+    };
+    p.outlinedShape(place(spanielEar()), EarFur, BandanaStroke);
+    p.strokePath(place(quadraticBezier({21.f, 50.f}, {19.f, 60.f}, {22.f, 70.f}, 10)), 1.6f, EarWave);
+    p.strokePath(place(quadraticBezier({28.f, 46.f}, {26.f, 58.f}, {29.f, 72.f}, 10)), 1.6f, EarWave);
+}
+
+void paintSpanielTuft(Painter& p, float dx)
+{
+    p.outlinedShape(shiftedX(path({43.f, 32.f}, {{{45.f, 24.f}, {50.f, 29.f}}, {{55.f, 24.f}, {57.f, 32.f}},
+                                               {{50.f, 30.f}, {43.f, 32.f}}}),
+                             dx),
+                    Chocolate, 2.2f);
+}
+
+void paintNeckerchiefDots(Painter& p, std::initializer_list<sf::Vector2f> dots)
+{
+    for (const sf::Vector2f dot : dots)
+        p.ellipse(dot, 1.6f, 1.6f, NeckerchiefDot);
+}
+
+// Drawn before the arms: seen from behind it hangs under the body, in
+// profile it sticks out at the back.
+void paintSpanielTail(Painter& p, Direction facing, float wagDeg)
+{
+    if (facing == Direction::Down)
+        return;
+    if (facing == Direction::Up)
+    {
+        const sf::Vector2f pivot{50.f, 80.f};
+        p.outlinedEllipse(rotateAround({50.f, 86.f}, pivot, wagDeg), 6.f, 10.f, Chocolate, 2.4f, wagDeg);
+        p.ellipse(rotateAround({50.f, 93.f}, pivot, wagDeg), 4.f, 3.6f, Tan, wagDeg);
+        return;
+    }
+    const sf::Vector2f pivot{72.f, 76.f};
+    const float angle = -40.f + wagDeg;
+    p.outlinedEllipse(rotateAround({74.f, 80.f}, pivot, angle), 5.5f, 11.f, Chocolate, 2.4f, angle);
+    p.ellipse(rotateAround({74.f, 88.f}, pivot, angle), 3.6f, 3.4f, Tan, angle);
+}
+
+void paintSpanielFront(Painter& p)
+{
+    paintSpanielTuft(p, 0.f);
+    p.ellipse({50.f, 67.f}, 13.f, 9.5f, Tan);
+    p.ellipse({40.f, 45.f}, 3.3f, 3.3f, Tan);
+    p.ellipse({60.f, 45.f}, 3.3f, 3.3f, Tan);
+    paintEye(p, {40.f, 54.f});
+    paintEye(p, {60.f, 54.f});
+    p.outlinedEllipse({50.f, 72.5f}, 3.4f, 4.2f, Tongue, 1.6f);
+    p.curve({50.f, 66.5f}, {49.f, 70.5f}, {45.5f, 69.5f}, 2.f, Ink);
+    p.curve({50.f, 66.5f}, {51.f, 70.5f}, {54.5f, 69.5f}, 2.f, Ink);
+    p.fillShape(path({44.5f, 60.f}, {{{50.f, 57.5f}, {55.5f, 60.f}}, {{54.f, 66.f}, {50.f, 66.5f}}, {{46.f, 66.f}, {44.5f, 60.f}}}),
+                DogNose);
+    p.ellipse({48.4f, 60.6f}, 1.7f, 1.f, White);
+    paintSpanielEar(p, -5.f, false);
+    paintSpanielEar(p, -5.f, true);
+    p.outlinedRoundedRect(33.f, 72.f, 34.f, 6.5f, 3.2f, Neckerchief, 2.2f);
+    p.outlinedShape({{37.f, 76.f}, {63.f, 76.f}, {50.f, 91.f}}, Neckerchief, 2.4f);
+    paintNeckerchiefDots(p, {{44.f, 79.5f}, {56.f, 79.5f}, {50.f, 85.f}});
+}
+
+void paintSpanielBack(Painter& p)
+{
+    paintSpanielTuft(p, 0.f);
+    paintSpanielEar(p, -5.f, false);
+    paintSpanielEar(p, -5.f, true);
+    p.outlinedRoundedRect(33.f, 72.f, 34.f, 6.5f, 3.2f, Neckerchief, 2.2f);
+    p.outlinedEllipse({50.f, 75.f}, 4.f, 4.f, Neckerchief, 2.2f);
+    p.outlinedShape(path({48.f, 77.f}, {{{43.f, 83.f}, {45.f, 88.f}}, {{49.f, 84.f}, {50.f, 78.f}}, {{49.f, 77.5f}, {48.f, 77.f}}}),
+                    Neckerchief, 2.f);
+    p.outlinedShape(path({52.f, 77.f}, {{{57.f, 83.f}, {55.f, 88.f}}, {{51.f, 84.f}, {50.f, 78.f}}, {{51.f, 77.5f}, {52.f, 77.f}}}),
+                    Neckerchief, 2.f);
+}
+
+void paintSpanielProfile(Painter& p)
+{
+    paintSpanielTuft(p, 3.f);
+    // Snout ("M33 52 Q17 51 14 60 Q15 69 32 70 Z"), then the mouth.
+    p.outlinedShape(path({33.f, 52.f}, {{{17.f, 51.f}, {14.f, 60.f}}, {{15.f, 69.f}, {32.f, 70.f}}, {{32.5f, 61.f}, {33.f, 52.f}}}),
+                    Tan, BandanaStroke);
+    p.outlinedEllipse({22.f, 69.5f}, 3.4f * 0.8f, 4.2f * 0.8f, Tongue, 1.6f);
+    p.curve({17.f, 66.f}, {24.f, 68.f}, {30.f, 66.f}, 1.8f, Ink);
+    p.ellipse({15.5f, 59.f}, 4.f, 3.6f, DogNose);
+    p.ellipse({14.6f, 58.f}, 1.3f, 0.8f, White);
+    p.ellipse({35.f, 44.f}, 3.f, 3.f, Tan);
+    paintEye(p, {35.f, 51.f}, 5.f, 6.f);
+    paintSpanielEar(p, 38.f, false); // the near ear, hanging behind the eye
+    p.outlinedShape(path({27.f, 71.f}, {{{46.f, 76.f}, {64.f, 72.f}}, {{64.f, 75.f}, {64.f, 78.f}}, {{46.f, 82.f}, {27.f, 77.f}},
+                                        {{27.f, 74.f}, {27.f, 71.f}}}),
+                    Neckerchief, 2.2f);
+    p.outlinedShape({{29.f, 75.f}, {45.f, 78.f}, {33.f, 90.f}}, Neckerchief, 2.4f);
+    paintNeckerchiefDots(p, {{34.f, 79.f}, {38.f, 84.f}});
+}
+
 // ---------- Captain ----------
 constexpr sf::Color Hat(42, 42, 51);
 constexpr sf::Color Gold(212, 169, 74);
@@ -669,6 +807,8 @@ void CharacterRenderer::update(const Character& character, float deltaSeconds)
     const float hop = std::sin(progress * Pi) * HopAmplitude * m_tileSize;
     m_bodyCenter = {m_center.x, m_center.y - hop};
 
+    if (deltaSeconds > 0.f)
+        m_elapsed = std::fmod(m_elapsed + deltaSeconds, 60.f); // whole wags: seamless wrap
     if (deltaSeconds > 0.f && m_bombAnimElapsed < BombAnimDuration)
         m_bombAnimElapsed = std::min(m_bombAnimElapsed + deltaSeconds, BombAnimDuration);
     const float bombWave = isPlayingBombAnimation() ? std::sin((m_bombAnimElapsed / BombAnimDuration) * Pi) : 0.f;
@@ -706,12 +846,17 @@ void CharacterRenderer::update(const Character& character, float deltaSeconds)
     // Shared template: legs, (tail), arms, (crest), body, then the model's
     // head and face.
     const bool parrot = m_model == CharacterModel::Parrot;
+    const bool spaniel = m_model == CharacterModel::Spaniel;
     const sf::Color bodyColor = parrot                                  ? Feathers
                               : m_model == CharacterModel::Revenant ? Skeleton
+                              : spaniel                             ? Chocolate
                                                                     : m_palette.skin;
-    paintLegs(painter, pose, profile, parrot ? Feet : Ink);
+    paintLegs(painter, pose, profile, parrot ? Feet : spaniel ? Tan : Ink);
     if (parrot)
         paintParrotTail(painter, facing);
+    if (spaniel)
+        paintSpanielTail(painter, facing,
+                         std::sin(m_elapsed * Pi * 2.f * TailWagFrequency) * TailWagAmplitudeDeg);
     paintArms(painter, pose, profile, bodyColor);
     if (parrot)
         paintCrest(painter, profile ? 4.f : 0.f);
@@ -745,6 +890,14 @@ void CharacterRenderer::update(const Character& character, float deltaSeconds)
         break;
     case CharacterModel::Parrot:
         paintParrotFace(painter, facing);
+        break;
+    case CharacterModel::Spaniel:
+        if (facing == Direction::Down)
+            paintSpanielFront(painter);
+        else if (facing == Direction::Up)
+            paintSpanielBack(painter);
+        else
+            paintSpanielProfile(painter);
         break;
     case CharacterModel::Revenant:
         if (facing == Direction::Down)
