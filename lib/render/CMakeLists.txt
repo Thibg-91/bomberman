@@ -5,5 +5,6 @@ bomberman_add_library(render
         Bomberman::grid
         Bomberman::character
         Bomberman::bomb
+        Bomberman::upgrade
         SFML::Graphics
 )

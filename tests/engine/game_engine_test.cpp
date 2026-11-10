@@ -1,5 +1,9 @@
 #include <algorithm>
+#include <cstdint>
+#include <memory>
+#include <optional>
 #include <stdexcept>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -310,7 +314,7 @@ TEST(GameEngineTest, OneActiveBombPerPlayerByDefault)
 TEST(GameEngineTest, MaxActiveBombsComesFromTheRules)
 {
     GameRules rules;
-    rules.maxActiveBombs = 2;
+    rules.startingStats.maxBombs = 2;
     GameEngine engine(openGrid(), rules);
     const PlayerId id = *engine.addPlayer();
     act(engine, id, CharacterCommand::placeBomb());
@@ -566,4 +570,458 @@ TEST(GameEngineTest, EventsAreTimestampedAndClearedOnceTaken)
     EXPECT_EQ(events[0].type, GameEvent::Type::PlayerTurned);
     EXPECT_EQ(events[0].tick, 3u);
     EXPECT_TRUE(engine.takeEvents().empty());
+}
+
+// =========================
+// Upgrades
+// =========================
+namespace
+{
+
+// Every destroyed block hides an upgrade of the given type.
+GameRules alwaysDrop(Bomberman::UpgradeType type)
+{
+    GameRules rules;
+    rules.upgrades.dropChancePercent = 100;
+    rules.upgrades.weights = {0, 0, 0};
+    rules.upgrades.weights[static_cast<std::size_t>(Bomberman::indexOf(type))] = 1;
+    return rules;
+}
+
+// Turns right then walks one cell right, from (1, 1) to (2, 1).
+void walkRight(GameEngine& engine, PlayerId id)
+{
+    face(engine, id, Direction::Right);
+    act(engine, id, CharacterCommand::move(Direction::Right));
+    runTicks(engine, engine.getCooldownTicks(id));
+}
+
+} // namespace
+
+using Bomberman::Upgrade;
+using Bomberman::UpgradeType;
+
+TEST(GameEngineUpgradeTest, PlayersStartWithTheRulesStartingStats)
+{
+    GameRules rules;
+    rules.startingStats = {2, 3, 4};
+    GameEngine engine(openGrid(), rules);
+    const PlayerId id = *engine.addPlayer();
+
+    EXPECT_EQ(engine.getStats(id), (Bomberman::PlayerStats{2, 3, 4}));
+    EXPECT_THROW((void)engine.getStats(5), std::out_of_range);
+}
+
+TEST(GameEngineUpgradeTest, ADestroyedBlockCanRevealAnUpgrade)
+{
+    Grid grid = openGrid();
+    grid.setTile({1, 3}, Tile(TileType::DestructibleBlock));
+    GameEngine engine(std::move(grid), alwaysDrop(UpgradeType::BlastRadius));
+    const PlayerId id = *engine.addPlayer();
+    act(engine, id, CharacterCommand::placeBomb()); // on (1, 2), next to the block
+    (void)engine.takeEvents();
+
+    runTicks(engine, FuseTicks);
+
+    // The explosion that revealed it spares it.
+    ASSERT_EQ(engine.getUpgrades().size(), 1u);
+    EXPECT_EQ(engine.getUpgrades().front(), (Upgrade{{1, 3}, UpgradeType::BlastRadius}));
+    const std::vector<GameEvent> events = engine.takeEvents();
+    const GameEvent* spawned = findEvent(events, GameEvent::Type::UpgradeSpawned);
+    ASSERT_NE(spawned, nullptr);
+    EXPECT_EQ(spawned->position, (Position{1, 3}));
+    EXPECT_EQ(spawned->upgrade, UpgradeType::BlastRadius);
+    EXPECT_EQ(countEvents(events, GameEvent::Type::UpgradeDestroyed), 0);
+}
+
+TEST(GameEngineUpgradeTest, NoUpgradeWhenTheDropChanceIsZero)
+{
+    Grid grid = openGrid();
+    grid.setTile({1, 3}, Tile(TileType::DestructibleBlock));
+    GameRules rules;
+    rules.upgrades.dropChancePercent = 0;
+    GameEngine engine(std::move(grid), rules);
+    const PlayerId id = *engine.addPlayer();
+    act(engine, id, CharacterCommand::placeBomb());
+
+    runTicks(engine, FuseTicks);
+
+    EXPECT_TRUE(engine.getGrid().isWalkable({1, 3}));
+    EXPECT_TRUE(engine.getUpgrades().empty());
+}
+
+TEST(GameEngineUpgradeTest, AddUpgradeNeedsAFreeWalkableCell)
+{
+    Grid grid = openGrid();
+    grid.setTile({3, 3}, Tile(TileType::Wall));
+    GameEngine engine(std::move(grid));
+
+    EXPECT_TRUE(engine.addUpgrade({{2, 2}, UpgradeType::ExtraBomb}));
+    EXPECT_FALSE(engine.addUpgrade({{2, 2}, UpgradeType::BlastRadius}));
+    EXPECT_FALSE(engine.addUpgrade({{3, 3}, UpgradeType::ExtraBomb}));
+    EXPECT_EQ(engine.getUpgrades().size(), 1u);
+}
+
+TEST(GameEngineUpgradeTest, WalkingOnAnUpgradeCollectsItAtOnce)
+{
+    GameEngine engine(openGrid());
+    const PlayerId id = *engine.addPlayer();
+    ASSERT_TRUE(engine.addUpgrade({{2, 1}, UpgradeType::ExtraBomb}));
+    face(engine, id, Direction::Right);
+    (void)engine.takeEvents();
+
+    // Collected on the tick the move starts, not when the walk ends.
+    act(engine, id, CharacterCommand::move(Direction::Right));
+
+    EXPECT_TRUE(engine.getUpgrades().empty());
+    EXPECT_EQ(engine.getStats(id).maxBombs, 2);
+    const std::vector<GameEvent> events = engine.takeEvents();
+    const GameEvent* collected = findEvent(events, GameEvent::Type::UpgradeCollected);
+    ASSERT_NE(collected, nullptr);
+    EXPECT_EQ(collected->playerId, id);
+    EXPECT_EQ(collected->position, (Position{2, 1}));
+    EXPECT_EQ(collected->upgrade, UpgradeType::ExtraBomb);
+}
+
+TEST(GameEngineUpgradeTest, ExtraBombLetsThePlayerDropOneMoreBomb)
+{
+    const GameRules rules;
+    GameEngine engine(openGrid(), rules);
+    const PlayerId id = *engine.addPlayer();
+    ASSERT_TRUE(engine.addUpgrade({{2, 1}, UpgradeType::ExtraBomb}));
+    walkRight(engine, id); // now on (2, 1), facing right
+
+    act(engine, id, CharacterCommand::placeBomb()); // on (3, 1)
+    runTicks(engine, rules.placeBombTicks);
+    face(engine, id, Direction::Down);
+    act(engine, id, CharacterCommand::placeBomb()); // on (2, 2)
+    runTicks(engine, rules.placeBombTicks);
+    face(engine, id, Direction::Left);
+    act(engine, id, CharacterCommand::placeBomb()); // third one: refused
+
+    EXPECT_EQ(engine.getBombManager().countActiveBombs(id), 2);
+}
+
+TEST(GameEngineUpgradeTest, BlastRadiusMakesTheNextBombsReachFurther)
+{
+    Grid grid = openGrid();
+    grid.setTile({5, 1}, Tile(TileType::DestructibleBlock)); // 2 cells from the bomb
+    GameEngine engine(std::move(grid));
+    const PlayerId id = *engine.addPlayer();
+    ASSERT_TRUE(engine.addUpgrade({{2, 1}, UpgradeType::BlastRadius}));
+    walkRight(engine, id);
+    ASSERT_EQ(engine.getStats(id).blastRadius, 2);
+
+    act(engine, id, CharacterCommand::placeBomb()); // on (3, 1)
+    EXPECT_EQ(engine.getBombManager().getBombs().front().getBlastRadius(), 2);
+
+    runTicks(engine, FuseTicks);
+    EXPECT_TRUE(engine.getGrid().isWalkable({5, 1}));
+}
+
+TEST(GameEngineUpgradeTest, PushStrengthMakesBombsSlideFurther)
+{
+    const GameRules rules;
+    GameEngine engine(openGrid(), rules);
+    const PlayerId id = *engine.addPlayer();
+    ASSERT_TRUE(engine.addUpgrade({{2, 1}, UpgradeType::PushStrength}));
+    walkRight(engine, id);
+    ASSERT_EQ(engine.getStats(id).pushDistance, 2);
+    act(engine, id, CharacterCommand::placeBomb()); // on (3, 1)
+    runTicks(engine, rules.placeBombTicks);
+    (void)engine.takeEvents();
+
+    act(engine, id, CharacterCommand::pushBomb());
+
+    EXPECT_EQ(engine.getBombManager().getBombs().front().getPosition(), (Position{5, 1}));
+    const std::vector<GameEvent> events = engine.takeEvents();
+    const GameEvent* pushed = findEvent(events, GameEvent::Type::BombPushed);
+    ASSERT_NE(pushed, nullptr);
+    EXPECT_EQ(pushed->position, (Position{5, 1}));
+}
+
+TEST(GameEngineUpgradeTest, APushedBombStopsBeforeAnotherPlayer)
+{
+    Grid grid(9, 3);
+    grid.addSpawnPoint({1, 1});
+    grid.addSpawnPoint({5, 1});
+    GameRules rules;
+    rules.startingStats.pushDistance = 5;
+    GameEngine engine(std::move(grid), rules);
+    const PlayerId pusher = *engine.addPlayer();
+    (void)engine.addPlayer();
+    face(engine, pusher, Direction::Right);
+    act(engine, pusher, CharacterCommand::placeBomb()); // on (2, 1)
+    runTicks(engine, rules.placeBombTicks);
+
+    act(engine, pusher, CharacterCommand::pushBomb());
+
+    EXPECT_EQ(engine.getBombManager().getBombs().front().getPosition(), (Position{4, 1}));
+}
+
+TEST(GameEngineUpgradeTest, AnUpgradeAtTheCapIsConsumedWithoutEffect)
+{
+    GameRules rules;
+    rules.upgrades.maxBombs = 1;
+    GameEngine engine(openGrid(), rules);
+    const PlayerId id = *engine.addPlayer();
+    ASSERT_TRUE(engine.addUpgrade({{2, 1}, UpgradeType::ExtraBomb}));
+
+    walkRight(engine, id);
+
+    EXPECT_TRUE(engine.getUpgrades().empty());
+    EXPECT_EQ(engine.getStats(id).maxBombs, 1);
+}
+
+TEST(GameEngineUpgradeTest, ExplosionsDestroyTheUpgradesInTheirBlast)
+{
+    GameEngine engine(openGrid());
+    const PlayerId id = *engine.addPlayer();
+    ASSERT_TRUE(engine.addUpgrade({{1, 3}, UpgradeType::PushStrength})); // in the blast of (1, 2)
+    ASSERT_TRUE(engine.addUpgrade({{4, 4}, UpgradeType::ExtraBomb}));    // out of it
+    act(engine, id, CharacterCommand::placeBomb());                      // on (1, 2)
+    (void)engine.takeEvents();
+
+    runTicks(engine, FuseTicks);
+
+    ASSERT_EQ(engine.getUpgrades().size(), 1u);
+    EXPECT_EQ(engine.getUpgrades().front().position, (Position{4, 4}));
+    const std::vector<GameEvent> events = engine.takeEvents();
+    const GameEvent* destroyed = findEvent(events, GameEvent::Type::UpgradeDestroyed);
+    ASSERT_NE(destroyed, nullptr);
+    EXPECT_EQ(destroyed->position, (Position{1, 3}));
+    EXPECT_EQ(destroyed->upgrade, UpgradeType::PushStrength);
+}
+
+TEST(GameEngineUpgradeTest, UpgradesDoNotBlockTheWay)
+{
+    GameEngine engine(openGrid());
+    const PlayerId id = *engine.addPlayer();
+    ASSERT_TRUE(engine.addUpgrade({{1, 2}, UpgradeType::ExtraBomb}));
+
+    act(engine, id, CharacterCommand::move(Direction::Down)); // already facing down
+
+    EXPECT_EQ(engine.getCharacter(id).getPosition(), (Position{1, 2}));
+}
+
+TEST(GameEngineUpgradeTest, DeadPlayersDoNotCollect)
+{
+    GameEngine engine(openGrid());
+    const PlayerId id = *engine.addPlayer();
+    act(engine, id, CharacterCommand::placeBomb()); // on (1, 2), kills the player on (1, 1)
+    runTicks(engine, FuseTicks);
+    ASSERT_FALSE(engine.getCharacter(id).isAlive());
+
+    ASSERT_TRUE(engine.addUpgrade({{1, 1}, UpgradeType::ExtraBomb}));
+    engine.tick();
+
+    EXPECT_EQ(engine.getUpgrades().size(), 1u);
+}
+
+namespace
+{
+
+// A bomb in the middle of 4 blocks; returns the upgrades they revealed.
+std::vector<Upgrade> upgradesRevealedWithSeed(std::uint64_t seed)
+{
+    Grid grid(7, 7);
+    grid.addSpawnPoint({3, 2});
+    for (const Position block : {Position{2, 3}, Position{4, 3}, Position{3, 4}, Position{1, 2}})
+        grid.setTile(block, Tile(TileType::DestructibleBlock));
+    GameRules rules;
+    rules.seed = seed;
+    rules.upgrades.dropChancePercent = 50;
+    GameEngine engine(std::move(grid), rules);
+    const PlayerId id = *engine.addPlayer();
+    act(engine, id, CharacterCommand::placeBomb()); // on (3, 3)
+    runTicks(engine, FuseTicks);
+    return engine.getUpgrades();
+}
+
+} // namespace
+
+TEST(GameEngineUpgradeTest, UpgradesOnlyDependOnTheSeed)
+{
+    bool seedsDiffer = false;
+    const std::vector<Upgrade> reference = upgradesRevealedWithSeed(1);
+    for (std::uint64_t seed = 1; seed <= 20; ++seed)
+    {
+        const std::vector<Upgrade> upgrades = upgradesRevealedWithSeed(seed);
+        EXPECT_EQ(upgrades, upgradesRevealedWithSeed(seed)) << "seed " << seed;
+        seedsDiffer = seedsDiffer || upgrades != reference;
+    }
+    EXPECT_TRUE(seedsDiffer);
+}
+
+// =========================
+// Explosion events (drawn by ExplosionRenderer)
+// =========================
+TEST(GameEngineTest, EachExplodingBombReportsItsBlast)
+{
+    Grid grid(9, 9);
+    grid.addSpawnPoint({1, 1});
+    grid.addSpawnPoint({7, 7});
+    grid.setTile({1, 4}, Tile(TileType::DestructibleBlock));
+    GameRules rules;
+    rules.startingStats.blastRadius = 3;
+    GameEngine engine(std::move(grid), rules);
+    const PlayerId first = *engine.addPlayer();
+    const PlayerId second = *engine.addPlayer();
+    engine.submitCommand(first, CharacterCommand::placeBomb());  // on (1, 2)
+    engine.submitCommand(second, CharacterCommand::placeBomb()); // on (7, 8)
+    engine.tick();
+    (void)engine.takeEvents();
+
+    runTicks(engine, FuseTicks - 1);
+
+    std::vector<GameEvent> explosions;
+    for (const GameEvent& event : engine.takeEvents())
+        if (event.type == GameEvent::Type::Explosion)
+            explosions.push_back(event);
+    ASSERT_EQ(explosions.size(), 2u);
+
+    const GameEvent& mine = explosions[0];
+    EXPECT_EQ(mine.position, (Position{1, 2}));
+    EXPECT_EQ(mine.blast.center, (Position{1, 2}));
+    EXPECT_EQ(mine.blast.reachTowards(Direction::Down), 2); // hits the block on (1, 4)
+    EXPECT_EQ(mine.blast.reachTowards(Direction::Up), 2);   // up to the grid edge
+    EXPECT_EQ(mine.cells, mine.blast.cells());
+
+    EXPECT_EQ(explosions[1].blast.center, (Position{7, 8}));
+}
+
+// =========================
+// Controllers (bots)
+// =========================
+namespace
+{
+
+// Replays a fixed list of commands and records when it is asked.
+class ScriptedController : public Bomberman::PlayerController
+{
+public:
+    explicit ScriptedController(std::vector<CharacterCommand> script, std::vector<std::uint64_t>* askedAt = nullptr)
+        : m_script(std::move(script)),
+          m_askedAt(askedAt)
+    {
+    }
+
+    std::optional<CharacterCommand> decide(const GameEngine& engine, PlayerId id) override
+    {
+        EXPECT_TRUE(engine.isReady(id)); // only asked when it can act
+        if (m_askedAt)
+            m_askedAt->push_back(engine.getTick());
+        if (m_next >= m_script.size())
+            return std::nullopt;
+        return m_script[m_next++];
+    }
+
+private:
+    std::vector<CharacterCommand> m_script;
+    std::vector<std::uint64_t>* m_askedAt;
+    std::size_t m_next = 0;
+};
+
+} // namespace
+
+TEST(GameEngineControllerTest, PlayersHaveNoControllerByDefault)
+{
+    GameEngine engine(openGrid());
+    const PlayerId id = *engine.addPlayer();
+
+    EXPECT_FALSE(engine.hasController(id));
+    EXPECT_THROW((void)engine.hasController(5), std::out_of_range);
+}
+
+TEST(GameEngineControllerTest, AControllerIsOnlyAskedWhenItsPlayerIsReady)
+{
+    GameEngine engine(openGrid());
+    const PlayerId id = *engine.addPlayer();
+    std::vector<std::uint64_t> askedAt;
+    // Face right (5 ticks), walk right (10 ticks), then idle.
+    engine.setController(id, std::make_unique<ScriptedController>(
+                                 std::vector<CharacterCommand>{CharacterCommand::move(Direction::Right),
+                                                               CharacterCommand::move(Direction::Right)},
+                                 &askedAt));
+    ASSERT_TRUE(engine.hasController(id));
+
+    runTicks(engine, 20);
+
+    // Asked at tick 0 (turn), 5 (walk), then every tick from 15 on.
+    const std::vector<std::uint64_t> expected = {0, 5, 15, 16, 17, 18, 19};
+    EXPECT_EQ(askedAt, expected);
+    EXPECT_EQ(engine.getCharacter(id).getPosition(), (Position{2, 1}));
+}
+
+TEST(GameEngineControllerTest, AControlledPlayerIgnoresSubmittedCommands)
+{
+    GameEngine engine(openGrid());
+    const PlayerId id = *engine.addPlayer();
+    engine.setController(id, std::make_unique<ScriptedController>(std::vector<CharacterCommand>{}));
+
+    act(engine, id, CharacterCommand::move(Direction::Right));
+    act(engine, id, CharacterCommand::placeBomb());
+
+    EXPECT_EQ(engine.getCharacter(id).getFacing(), Direction::Down);
+    EXPECT_TRUE(engine.getBombManager().getBombs().empty());
+}
+
+TEST(GameEngineControllerTest, RemovingTheControllerGivesThePlayerBackToCommands)
+{
+    GameEngine engine(openGrid());
+    const PlayerId id = *engine.addPlayer();
+    engine.setController(id, std::make_unique<ScriptedController>(std::vector<CharacterCommand>{}));
+    engine.setController(id, nullptr);
+
+    EXPECT_FALSE(engine.hasController(id));
+    act(engine, id, CharacterCommand::move(Direction::Right));
+    EXPECT_EQ(engine.getCharacter(id).getFacing(), Direction::Right);
+}
+
+TEST(GameEngineControllerTest, ControllersAndCommandsDriveDifferentPlayers)
+{
+    GameEngine engine(openGrid());
+    const PlayerId human = *engine.addPlayer();
+    const PlayerId bot = *engine.addPlayer();
+    engine.setController(bot, std::make_unique<ScriptedController>(
+                                  std::vector<CharacterCommand>{CharacterCommand::placeBomb()}));
+    engine.setController(42, std::make_unique<ScriptedController>(std::vector<CharacterCommand>{})); // ignored
+
+    act(engine, human, CharacterCommand::move(Direction::Right));
+
+    EXPECT_EQ(engine.getCharacter(human).getFacing(), Direction::Right);
+    EXPECT_TRUE(engine.getBombManager().hasBombAt({5, 6})); // the bot (on (5, 5), facing down) dropped it
+    EXPECT_EQ(engine.getBombManager().getBombs().front().getOwnerId(), bot);
+}
+
+TEST(GameEngineControllerTest, ADeadPlayerIsNoLongerAsked)
+{
+    GameEngine engine(openGrid());
+    const PlayerId id = *engine.addPlayer();
+    const PlayerId bomber = *engine.addPlayer();
+    std::vector<std::uint64_t> askedAt;
+    engine.setController(id, std::make_unique<ScriptedController>(std::vector<CharacterCommand>{}, &askedAt));
+
+    // The other player walks next to (1, 1) and blows it up.
+    face(engine, bomber, Direction::Up);
+    for (int i = 0; i < 3; ++i)
+    {
+        act(engine, bomber, CharacterCommand::move(Direction::Up));
+        runTicks(engine, engine.getCooldownTicks(bomber));
+    }
+    face(engine, bomber, Direction::Left); // on (5, 2), facing (4, 2)
+    for (int i = 0; i < 3; ++i)
+    {
+        act(engine, bomber, CharacterCommand::move(Direction::Left));
+        runTicks(engine, engine.getCooldownTicks(bomber));
+    }
+    // On (2, 2): face up to drop the bomb on (2, 1), next to (1, 1).
+    face(engine, bomber, Direction::Up);
+    act(engine, bomber, CharacterCommand::placeBomb());
+    runTicks(engine, FuseTicks);
+    ASSERT_FALSE(engine.getCharacter(id).isAlive());
+
+    const std::size_t asked = askedAt.size();
+    runTicks(engine, 30);
+    EXPECT_EQ(askedAt.size(), asked);
 }

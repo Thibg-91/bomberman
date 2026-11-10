@@ -3,8 +3,10 @@
 
 #pragma once
 
+#include <optional>
 #include <vector>
 
+#include "blast.h"
 #include "bomb.h"
 #include "direction.h"
 #include "grid.h"
@@ -38,32 +40,42 @@ public:
     // Character::move() so characters cannot walk through bombs.
     [[nodiscard]] std::vector<Position> getBombPositions() const;
 
-    // Drops a bomb owned by ownerId on position. Fails (returns false) if
-    // the cell is not walkable (wall/destructible block), already holds a
-    // bomb, or ownerId already has maxActiveBombs bombs on the grid (a new
-    // one can be dropped once one of them has exploded).
+    // Drops a bomb owned by ownerId on position, exploding with
+    // blastRadius cells per arm. Fails (returns false) if the cell is not
+    // walkable (wall/destructible block), already holds a bomb, or ownerId
+    // already has maxActiveBombs bombs on the grid (a new one can be dropped
+    // once one of them has exploded).
     bool placeBomb(Position position, const Grid& grid, int ownerId = 0,
-                   int maxActiveBombs = DefaultMaxActiveBombs);
+                   int maxActiveBombs = DefaultMaxActiveBombs, int blastRadius = Bomb::DefaultBlastRadius);
 
-    // Pushes the bomb standing on position by distance cells in direction.
-    // Fails if there is no bomb there, or the destination cell is not
-    // walkable or already occupied by another bomb; the bomb then stays put.
-    bool pushBombAt(Position position, Direction direction, const Grid& grid,
-                    int distance = DefaultPushDistance) noexcept;
+    // Pushes the bomb standing on position: it slides up to distance cells
+    // in direction and stops before the first cell that is not walkable,
+    // holds another bomb or is one of the obstacles (e.g. characters, which
+    // BombManager does not know about). Returns where the bomb ended up, or
+    // nothing (bomb left in place) if there is no bomb there or it cannot
+    // move at all.
+    std::optional<Position> pushBombAt(Position position, Direction direction, const Grid& grid,
+                                       int distance = DefaultPushDistance,
+                                       const std::vector<Position>& obstacles = {});
 
     // Advances every bomb's fuse and explodes those reaching zero: the
-    // destructible blocks their blast cross reaches are destroyed. Returns
-    // every cell touched by an explosion during this call (bomb centers
-    // included), so the caller can check it against character positions.
-    [[nodiscard]] std::vector<Position> update(float deltaSeconds, Grid& grid);
+    // destructible blocks their blast cross reaches are destroyed (and
+    // appended to destroyedBlocks when given); the shape of each explosion
+    // is appended to blasts when given (renderers draw them). Returns every
+    // cell touched by an explosion during this call (bomb centers and
+    // destroyed blocks included), so the caller can check it against
+    // character positions.
+    [[nodiscard]] std::vector<Position> update(float deltaSeconds, Grid& grid,
+                                               std::vector<Position>* destroyedBlocks = nullptr,
+                                               std::vector<Blast>* blasts = nullptr);
 
 private:
     // =========================
     // Private Methods
     // =========================
-    // Appends the cells destroyed/reached by a bomb exploding at center to
-    // hitCells, destroying the destructible blocks it meets along the way.
-    void explode(Position center, int blastRadius, Grid& grid, std::vector<Position>& hitCells) const;
+    // Destroys the destructible blocks the blast of a bomb exploding at
+    // center reaches and returns that blast.
+    static Blast explode(Position center, int blastRadius, Grid& grid, std::vector<Position>* destroyedBlocks);
 
     // =========================
     // Members

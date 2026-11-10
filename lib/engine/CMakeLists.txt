@@ -3,4 +3,5 @@ bomberman_add_library(engine
         Bomberman::grid
         Bomberman::character
         Bomberman::bomb
+        Bomberman::upgrade
 )

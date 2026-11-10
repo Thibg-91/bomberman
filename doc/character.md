@@ -9,6 +9,26 @@ Ce document décrit le personnage jouable : logique, contrôles et affichage.
 | `Bomberman::character` | `lib/character` | `grid`      | `Character`, `CharacterCommand`, `Direction` (aucune dépendance SFML) |
 | `Bomberman::render`    | `lib/render`    | + `character` | `CharacterRenderer` (dessin animé), `KeyboardController` (entrées)  |
 
+## Choix du pirate
+
+Le jeu s'ouvre sur l'écran de sélection (maquette validée « Choix du pirate », disposition « Sur le pont ») : les cinq pirates sont alignés sur le pont, le pirate choisi s'avance, grandit et saute dans un cercle doré, les autres restent en retrait, assombris. Il n'y a pas de texte : le projet n'embarque aucune police.
+
+| Pirate | `CharacterModel` | Signes distinctifs |
+|---|---|---|
+| Le Boucanier | `Buccaneer` | bandana rouge à pois noué, un œil, cache-œil, cicatrice (le modèle d'origine) |
+| Le Capitaine | `Captain` | tricorne noir galonné d'or avec une tête de mort, moustache en guidon |
+| La Vigie | `Lookout` | bonnet rayé bleu et blanc à pompon rouge, taches de rousseur |
+| Le Perroquet | `Parrot` | plumes vertes, ailes, bec jaune crochu, crête rouge, pattes orange |
+| Le Revenant | `Revenant` | squelette aux orbites lumineuses, bandana violet sombre |
+
+Tous partagent le même gabarit (corps rond, bras, jambes, mêmes coordonnées), donc la marche, le saut et la pose de bombe fonctionnent pour chacun ; seuls la tête, le visage et les couleurs changent. Le choix est purement visuel : tous les pirates jouent de la même façon.
+
+| Touche (sélection) | Action |
+|---|---|
+| `Q` / `D` ou `←` / `→` | Pirate précédent / suivant |
+| `Entrée` ou `Espace` | Lance la partie |
+| `Échap` | Quitte le jeu |
+
 ## Contrôles
 
 | Touche        | Action                                                        |
@@ -16,6 +36,8 @@ Ce document décrit le personnage jouable : logique, contrôles et affichage.
 | `Z Q S D`     | Déplacement haut / gauche / bas / droite (touche maintenue)   |
 | `Espace`      | Pose une bombe sur la case devant le personnage               |
 | `Entrée`      | Pousse la bombe située devant le personnage                   |
+| `Tab`         | Revient à l'écran de choix du pirate                          |
+| `1` à `4`     | Recommence sur une autre map, avec le même pirate             |
 
 Les touches sont configurables via `KeyboardController::Bindings`.
 

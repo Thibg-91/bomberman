@@ -3,7 +3,11 @@
 
 #pragma once
 
-#include "bomb_manager.h"
+#include <cstdint>
+
+#include "player_stats.h"
+#include "random.h"
+#include "upgrade_rules.h"
 
 namespace Bomberman
 {
@@ -32,8 +36,14 @@ struct GameRules
     int placeBombTicks = 15; // 0.25 s after dropping a bomb
     int pushBombTicks = 15;  // 0.25 s after punching a bomb
 
-    int maxActiveBombs = BombManager::DefaultMaxActiveBombs; // per character
-    int pushDistance = BombManager::DefaultPushDistance;     // cells per punch
+    // What every character starts with (1 bomb, pushes 1 cell, blast of 1
+    // cell), raised by the upgrades it picks up.
+    PlayerStats startingStats;
+    UpgradeRules upgrades;
+
+    // Seed of every random draw of the match (upgrades in destroyed blocks):
+    // the same seed and the same commands always give the same game.
+    std::uint64_t seed = Random::DefaultSeed;
 
     [[nodiscard]] constexpr float tickDuration() const noexcept
     {

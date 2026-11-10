@@ -19,24 +19,26 @@ Tous les délais sont exprimés en **nombre entier de ticks** (`GameRules`) : la
 | Pose de bombe (`placeBombTicks`) | 15 | 0,25 s |
 | Poussée de bombe (`pushBombTicks`) | 15 | 0,25 s |
 
-Une action qui échoue (mur, pas de bombe à pousser, limite de bombes atteinte) ne coûte aucun délai. `GameRules` porte aussi `maxActiveBombs` et `pushDistance`, prévus pour devenir des bonus par personnage.
+Une action qui échoue (mur, pas de bombe à pousser, limite de bombes atteinte) ne coûte aucun délai. `GameRules` porte aussi les stats de départ des personnages (`startingStats` : 1 bombe, poussée d'1 case, rayon d'1 case), les règles des upgrades (`upgrades`) et la graine du hasard (`seed`) : voir [upgrade.md](upgrade.md).
 
 ## Composants
 
 - `FixedTimestep` : patron « pas fixe + accumulateur ». Convertit le temps réel d'une frame en nombre de ticks à jouer, garde le reliquat pour la frame suivante, et après un gel (fenêtre déplacée, debugger) ne joue pas plus de 5 ticks d'un coup (le retard est abandonné plutôt que d'accélérer le jeu).
 - `GameEngine` : possède la `Grid`, le `BombManager` et tous les personnages.
   - `addPlayer()` place un joueur sur le prochain point de spawn libre et renvoie son `PlayerId` (0, 1, 2…, aussi utilisé comme propriétaire de ses bombes).
-  - `submitCommand(id, command)` : **seul** point d'entrée pour piloter un personnage. Le clavier aujourd'hui, une IA ou un pair réseau demain appellent la même méthode avec leur propre id.
+  - `submitCommand(id, command)` : point d'entrée du clavier (et demain d'un pair réseau), une commande par frame.
+  - `setController(id, controller)` : confie un joueur à un `PlayerController` (les bots, voir [bot.md](bot.md)). Le moteur lui demande sa commande **à chaque tick où le joueur est prêt**, ce qui garde la partie indépendante du framerate ; le joueur ignore alors `submitCommand`. Dans les deux cas la commande passe par la même exécution (`execute`) : un bot n'a aucun pouvoir de plus qu'un joueur au clavier.
   - `advance(realSeconds)` joue les ticks couverts par le temps réel ; `tick()` joue exactement un tick (tests).
-  - `takeEvents()` renvoie les `GameEvent` survenus (`PlayerTurned`, `PlayerMoved`, `BombPlaced`, `BombPushed`, `Explosion`, `PlayerKilled`, horodatés par tick) : le rendu (animation de pose, reconstruction de la grille après une explosion) réagit à ces événements sans scruter l'état.
+  - `takeEvents()` renvoie les `GameEvent` survenus (`PlayerTurned`, `PlayerMoved`, `BombPlaced`, `BombPushed`, `Explosion`, `PlayerKilled`, `UpgradeSpawned`, `UpgradeCollected`, `UpgradeDestroyed`, horodatés par tick) : le rendu (animation de pose, reconstruction de la grille après une explosion) réagit à ces événements sans scruter l'état.
 
 ## Déroulement d'un tick
 
 Ordre déterministe, joueurs par id croissant :
 
-1. chaque joueur vivant, **prêt** (pas en déplacement, délai écoulé) et ayant une commande en attente l'exécute ;
-2. les personnages avancent dans leur déplacement, les délais décomptent ;
-3. les mèches brûlent ; une explosion détruit les blocs et tue les joueurs touchés (événement `Explosion` puis `PlayerKilled`).
+1. chaque joueur vivant et **prêt** (pas en déplacement, délai écoulé) exécute sa commande : celle que renvoie son contrôleur s'il en a un (qui voit déjà les actions des joueurs d'id inférieur), sinon sa commande en attente ;
+2. chaque joueur vivant ramasse l'upgrade de sa case (dès le début d'un pas) ;
+3. les personnages avancent dans leur déplacement, les délais décomptent ;
+4. les mèches brûlent ; une explosion détruit les blocs et les upgrades touchées, les blocs détruits peuvent révéler une upgrade (épargnée par cette même explosion), puis les joueurs touchés meurent (événements `Explosion`, `UpgradeDestroyed`, `UpgradeSpawned`, `PlayerKilled`).
 
 ## Commandes : une intention « maintenant »
 
@@ -44,10 +46,12 @@ Une commande reçue pendant qu'un joueur est occupé est **abandonnée**, jamais
 
 ## Intégration (`exe/main.cpp`)
 
-Chaque frame : lecture du clavier → `submitCommand` → `advance(dt)` → traitement des événements → mise à jour des renderers à partir de l'état du moteur. La règle « un demi-tour consomme l'appui » reste côté clavier (`turnKeyHeld`, alimenté par l'événement `PlayerTurned`), car c'est une question d'ergonomie de l'entrée, pas une règle du jeu.
+Chaque frame : lecture du clavier → `submitCommand` → `advance(dt)` (les bots décident à l'intérieur, tick par tick) → traitement des événements → mise à jour des renderers à partir de l'état du moteur. La règle « un demi-tour consomme l'appui » reste côté clavier (`turnKeyHeld`, alimenté par l'événement `PlayerTurned`), car c'est une question d'ergonomie de l'entrée, pas une règle du jeu.
 
 ## Évolutions prévues
 
-- Multijoueur local / IA : `addPlayer()` pour chaque participant, une source de commandes par `PlayerId`.
+- Fin de partie : `MatchReferee` (même bibliothèque) dit quand la partie est finie, qui a gagné, et accélère la partie quand le joueur est mort ; voir [end_of_match.md](end_of_match.md).
+- IA : faite, voir [bot.md](bot.md) (un `Bot` par adversaire via `setController`).
+- Multijoueur local : `addPlayer()` pour chaque participant, une source de commandes par `PlayerId` (déjà prévu, cadenassé, dans le menu : [menu.md](menu.md)).
 - Réseau : les commandes horodatées par tick et la simulation déterministe permettent un lockstep ; les événements peuvent servir à la synchronisation de l'état.
-- Bonus : rendre `GameRules` (délais, nombre de bombes, portée) modifiable par joueur.
+- Bonus : fait, voir [upgrade.md](upgrade.md). Les délais d'action pourraient devenir eux aussi des stats par joueur (bonus de vitesse).

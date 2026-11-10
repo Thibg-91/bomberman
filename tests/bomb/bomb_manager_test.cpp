@@ -234,3 +234,98 @@ TEST(BombManagerTest, DefaultBlastRadiusDoesNotReachTwoCellsAway)
     EXPECT_TRUE(contains(hitCells, Position{4, 3}));
     EXPECT_FALSE(contains(hitCells, Position{5, 3}));
 }
+
+// =========================
+// Upgrades: blast radius and push strength
+// =========================
+TEST(BombManagerTest, PlaceBombUsesTheGivenBlastRadius)
+{
+    const Grid grid = openGrid();
+    BombManager manager;
+
+    ASSERT_TRUE(manager.placeBomb({3, 3}, grid, 0, 1, 3));
+
+    EXPECT_EQ(manager.getBombs().front().getBlastRadius(), 3);
+}
+
+TEST(BombManagerTest, ABiggerRadiusReachesFurther)
+{
+    Grid grid = openGrid();
+    BombManager manager;
+    ASSERT_TRUE(manager.placeBomb({3, 3}, grid, 0, 1, 3));
+
+    const std::vector<Position> hitCells = manager.update(Bomb::DefaultFuseDuration, grid);
+
+    EXPECT_TRUE(contains(hitCells, {0, 3}));
+    EXPECT_TRUE(contains(hitCells, {6, 3}));
+    EXPECT_TRUE(contains(hitCells, {3, 0}));
+    EXPECT_TRUE(contains(hitCells, {3, 6}));
+    EXPECT_EQ(hitCells.size(), 13u); // center + 4 arms of 3
+}
+
+TEST(BombManagerTest, UpdateReportsTheDestroyedBlocks)
+{
+    Grid grid = openGrid();
+    grid.setTile({4, 3}, Tile(TileType::DestructibleBlock));
+    grid.setTile({3, 1}, Tile(TileType::DestructibleBlock)); // out of reach (radius 1)
+    BombManager manager;
+    ASSERT_TRUE(manager.placeBomb({3, 3}, grid));
+
+    std::vector<Position> destroyedBlocks;
+    (void)manager.update(Bomb::DefaultFuseDuration, grid, &destroyedBlocks);
+
+    ASSERT_EQ(destroyedBlocks.size(), 1u);
+    EXPECT_EQ(destroyedBlocks.front(), (Position{4, 3}));
+    EXPECT_FALSE(grid.isWalkable({3, 1}));
+}
+
+TEST(BombManagerTest, PushReturnsWhereTheBombLanded)
+{
+    const Grid grid = openGrid();
+    BombManager manager;
+    ASSERT_TRUE(manager.placeBomb({1, 3}, grid));
+
+    EXPECT_EQ(manager.pushBombAt({1, 3}, Direction::Right, grid, 3), (Position{4, 3}));
+    EXPECT_TRUE(manager.hasBombAt({4, 3}));
+}
+
+TEST(BombManagerTest, AStrongPushStopsBeforeTheFirstObstacle)
+{
+    Grid grid = openGrid();
+    grid.setTile({5, 3}, Tile(TileType::DestructibleBlock));
+    BombManager manager;
+    ASSERT_TRUE(manager.placeBomb({1, 3}, grid));
+
+    // 4 cells asked, but the block on (5, 3) stops the slide on (4, 3).
+    EXPECT_EQ(manager.pushBombAt({1, 3}, Direction::Right, grid, 4), (Position{4, 3}));
+}
+
+TEST(BombManagerTest, AStrongPushStopsBeforeAnotherBomb)
+{
+    const Grid grid = openGrid();
+    BombManager manager;
+    ASSERT_TRUE(manager.placeBomb({1, 3}, grid, 0));
+    ASSERT_TRUE(manager.placeBomb({4, 3}, grid, 1));
+
+    EXPECT_EQ(manager.pushBombAt({1, 3}, Direction::Right, grid, 5), (Position{3, 3}));
+}
+
+TEST(BombManagerTest, AStrongPushStopsBeforeTheGivenObstacles)
+{
+    const Grid grid = openGrid();
+    BombManager manager;
+    ASSERT_TRUE(manager.placeBomb({1, 3}, grid));
+
+    // e.g. a character standing on (3, 3)
+    EXPECT_EQ(manager.pushBombAt({1, 3}, Direction::Right, grid, 5, {{3, 3}}), (Position{2, 3}));
+}
+
+TEST(BombManagerTest, APushThatCannotMoveTheBombFails)
+{
+    const Grid grid = openGrid();
+    BombManager manager;
+    ASSERT_TRUE(manager.placeBomb({1, 3}, grid));
+
+    EXPECT_FALSE(manager.pushBombAt({1, 3}, Direction::Right, grid, 5, {{2, 3}}).has_value());
+    EXPECT_TRUE(manager.hasBombAt({1, 3}));
+}
