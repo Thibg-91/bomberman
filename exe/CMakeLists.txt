@@ -6,5 +6,6 @@ bomberman_add_executable(bomberman
         Bomberman::upgrade
         Bomberman::engine
         Bomberman::bot
+        Bomberman::network
         Bomberman::render
 )

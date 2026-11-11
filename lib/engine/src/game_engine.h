@@ -24,6 +24,23 @@
 namespace Bomberman
 {
 
+// A command a player executed during a tick (see
+// GameEngine::setCommandRecording()). Feeding the same commands, tick by
+// tick, to another engine built from the same grid and rules reproduces the
+// match exactly: that is how network clients follow the host (see
+// doc/network.md).
+struct ExecutedCommand
+{
+    std::uint64_t tick = 0;
+    PlayerId player = 0;
+    CharacterCommand command;
+
+    friend bool operator==(const ExecutedCommand& lhs, const ExecutedCommand& rhs) noexcept
+    {
+        return lhs.tick == rhs.tick && lhs.player == rhs.player && lhs.command == rhs.command;
+    }
+};
+
 // Runs a match: owns the grid, the bombs and every character, and advances
 // them by fixed ticks (GameRules::tickRate per second). Purely logical (no
 // SFML), so it is fully testable headless.
@@ -126,6 +143,20 @@ public:
     // Events recorded since the last call (oldest first); clears them.
     [[nodiscard]] std::vector<GameEvent> takeEvents();
 
+    // When enabled, every command handed to a player at step 1 of a tick
+    // (submitted or decided by its controller) is recorded, whether it had
+    // an effect or not. Off by default (solo matches don't need it).
+    void setCommandRecording(bool enabled) noexcept;
+    // Commands recorded since the last call, in execution order (by tick,
+    // then by player id); clears them.
+    [[nodiscard]] std::vector<ExecutedCommand> takeExecutedCommands();
+
+    // Fingerprint of the whole match state (tick, grid, players, bombs,
+    // upgrades, random generator): two engines that played the same match
+    // have the same hash. Network clients compare theirs with the host's to
+    // detect a desynchronisation. Not stable across versions of the game.
+    [[nodiscard]] std::uint64_t stateHash() const noexcept;
+
 private:
     struct Player
     {
@@ -164,6 +195,8 @@ private:
     FixedTimestep m_timestep;
     std::vector<Player> m_players;
     std::vector<GameEvent> m_events;
+    std::vector<ExecutedCommand> m_executedCommands;
+    bool m_recordCommands = false;
     std::uint64_t m_tick = 0;
 };
 

@@ -19,7 +19,10 @@ namespace Bomberman
 // The launch menu (validated mock-up "Préparer l'abordage", layout "Le
 // tableau de bord"): one wooden panel per setting on the galleon's deck,
 // from top to bottom
-//   - mode: solo against the computer / local multiplayer (padlocked);
+//   - mode: solo against the computer (the buccaneer facing a skeleton),
+//     host a network game (the captain's ship sending waves, a crown) or
+//     join one (a spyglass and waves) (validated mock-up "Rassembler
+//     l'équipage");
 //   - pirate: the five crew models, the chosen one bigger, hopping in a
 //     golden circle, the others dimmed;
 //   - map: a real miniature of each map (GridRenderer drawn small);
@@ -29,7 +32,8 @@ namespace Bomberman
 //     slot with as many dots under it;
 // and a golden launch button (grey when the setup cannot start). The
 // focused panel has a golden frame, a small golden badge at the start of
-// each row says what it sets. No text: the project ships no font.
+// each row says what it sets; the rows the mode does not use are shaded.
+// No text: the project ships no font.
 //
 // Laid out in a DesignSize (1600x900) space; viewFor() fits it in any
 // screen with black bars, like the rest of the menus.
@@ -69,10 +73,11 @@ public:
     // Wooden decor under the characters (deck, panels, badges, frames,
     // pennants, slots).
     [[nodiscard]] const sf::VertexArray& getDecor() const noexcept;
-    // Drawn over the dimmed characters (padlock, golden circle, dots,
-    // frames of the opponents' slots).
+    // Drawn over the dimmed characters (swords, crown and waves of the mode
+    // icons, golden circle, dots, frames of the opponents' slots).
     [[nodiscard]] const sf::VertexArray& getOverlay() const noexcept;
-    // Drawn over the map miniatures (dimming, frames, launch button).
+    // Drawn over the map miniatures (dimming, frames, shaded rows, launch
+    // button).
     [[nodiscard]] const sf::VertexArray& getFront() const noexcept;
 
     // Every character shown except the chosen pirate (mode icons, badges,

@@ -34,6 +34,13 @@ public:
     // at 100 or more).
     [[nodiscard]] bool percent(int percent) noexcept;
 
+    // Internal state (the next draws only depend on it): lets the engine
+    // fingerprint a match (GameEngine::stateHash()).
+    [[nodiscard]] std::uint64_t getState() const noexcept
+    {
+        return m_state;
+    }
+
 private:
     // =========================
     // Members

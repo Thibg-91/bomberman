@@ -23,6 +23,17 @@ else()
     add_compile_options(-Wall -Wextra)
 endif()
 
+# Network play replays the host's commands on every client (see
+# doc/network.md): the simulation must compute bit-identical floats on every
+# machine. Forbid fusing a*b+c into one FMA instruction (Clang does it by
+# default on arm64, which rounds differently from x86-64 builds); MSVC's
+# default /fp:precise already never contracts.
+if(MSVC)
+    add_compile_options(/fp:precise)
+else()
+    add_compile_options(-ffp-contract=off)
+endif()
+
 # Code coverage (GCC/Clang): instruments every target of the project so that
 # running the tests produces .gcda files, later turned into a report by
 # gcovr (see `task coverage`).

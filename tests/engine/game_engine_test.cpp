@@ -1033,3 +1033,150 @@ TEST(GameEngineControllerTest, ADeadPlayerIsNoLongerAsked)
     runTicks(engine, 30);
     EXPECT_EQ(askedAt.size(), asked);
 }
+
+// =========================
+// Command recording and state hash (network replay, see doc/network.md)
+// =========================
+namespace
+{
+
+// A crowded board: blocks to blow up so upgrades drop and the random
+// generator is used.
+Grid crowdedGrid()
+{
+    Grid grid(9, 9);
+    for (int y = 0; y < 9; ++y)
+        for (int x = 0; x < 9; ++x)
+        {
+            const bool border = x == 0 || y == 0 || x == 8 || y == 8;
+            if (border || (x % 2 == 0 && y % 2 == 0))
+                grid.setTile({x, y}, Tile(TileType::Wall));
+            else if ((x + 2 * y) % 3 == 0)
+                grid.setTile({x, y}, Tile(TileType::DestructibleBlock));
+        }
+    for (const Position spawn : {Position{1, 1}, Position{7, 7}, Position{7, 1}, Position{1, 7}})
+    {
+        grid.setTile(spawn, Tile(TileType::Empty));
+        grid.addSpawnPoint(spawn);
+    }
+    return grid;
+}
+
+// Pseudo-random but reproducible commands for every player, every tick.
+CharacterCommand scriptedCommand(Bomberman::Random& random)
+{
+    switch (random.below(6))
+    {
+    case 0:
+        return CharacterCommand::placeBomb();
+    case 1:
+        return CharacterCommand::pushBomb();
+    default:
+        return CharacterCommand::move(static_cast<Direction>(random.below(4)));
+    }
+}
+
+GameRules dropRules()
+{
+    GameRules rules;
+    rules.seed = 42;
+    rules.upgrades.dropChancePercent = 60;
+    return rules;
+}
+
+} // namespace
+
+TEST(GameEngineReplayTest, RecordingIsOffByDefault)
+{
+    GameEngine engine(openGrid());
+    (void)engine.addPlayer();
+    act(engine, 0, CharacterCommand::move(Direction::Right));
+    EXPECT_TRUE(engine.takeExecutedCommands().empty());
+}
+
+TEST(GameEngineReplayTest, RecordsTheCommandsHandedToReadyPlayersWithTheirTick)
+{
+    GameEngine engine(openGrid());
+    (void)engine.addPlayer();
+    (void)engine.addPlayer();
+    engine.setCommandRecording(true);
+
+    engine.submitCommand(1, CharacterCommand::move(Direction::Up));
+    act(engine, 0, CharacterCommand::move(Direction::Right)); // tick 0: both act
+    act(engine, 0, CharacterCommand::placeBomb());            // tick 1: player 0 is walking: dropped
+
+    const std::vector<Bomberman::ExecutedCommand> recorded = engine.takeExecutedCommands();
+    ASSERT_EQ(recorded.size(), 2u);
+    EXPECT_EQ(recorded[0], (Bomberman::ExecutedCommand{0, 0, CharacterCommand::move(Direction::Right)}));
+    EXPECT_EQ(recorded[1], (Bomberman::ExecutedCommand{0, 1, CharacterCommand::move(Direction::Up)}));
+    EXPECT_TRUE(engine.takeExecutedCommands().empty()); // taken
+}
+
+TEST(GameEngineReplayTest, CommandsWithoutEffectAreRecordedToo)
+{
+    Grid grid = openGrid();
+    grid.setTile({1, 0}, Tile(TileType::Wall));
+    GameEngine engine(std::move(grid));
+    (void)engine.addPlayer();
+    engine.setCommandRecording(true);
+
+    act(engine, 0, CharacterCommand::pushBomb()); // no bomb in front: nothing happens
+    EXPECT_EQ(engine.takeExecutedCommands().size(), 1u);
+}
+
+TEST(GameEngineReplayTest, ReplayingTheRecordedCommandsReproducesTheMatch)
+{
+    GameEngine host(crowdedGrid(), dropRules());
+    GameEngine client(crowdedGrid(), dropRules());
+    for (int i = 0; i < 4; ++i)
+    {
+        (void)host.addPlayer();
+        (void)client.addPlayer();
+    }
+    host.setCommandRecording(true);
+
+    Bomberman::Random script(7);
+    int upgradesSeen = 0;
+    for (int tick = 0; tick < 1200; ++tick)
+    {
+        for (PlayerId id = 0; id < 4; ++id)
+            host.submitCommand(id, scriptedCommand(script));
+        host.tick();
+
+        for (const Bomberman::ExecutedCommand& executed : host.takeExecutedCommands())
+        {
+            ASSERT_EQ(executed.tick, client.getTick());
+            client.submitCommand(executed.player, executed.command);
+        }
+        client.tick();
+
+        ASSERT_EQ(client.stateHash(), host.stateHash()) << "tick " << tick;
+        const std::vector<GameEvent> hostEvents = host.takeEvents();
+        const std::vector<GameEvent> clientEvents = client.takeEvents();
+        ASSERT_EQ(clientEvents.size(), hostEvents.size()) << "tick " << tick;
+        upgradesSeen += countEvents(hostEvents, GameEvent::Type::UpgradeSpawned);
+    }
+    EXPECT_GT(upgradesSeen, 0); // the random generator really was exercised
+}
+
+TEST(GameEngineReplayTest, TheStateHashTellsMatchesApart)
+{
+    GameEngine a(openGrid());
+    GameEngine b(openGrid());
+    (void)a.addPlayer();
+    (void)b.addPlayer();
+    EXPECT_EQ(a.stateHash(), b.stateHash());
+
+    a.tick();
+    EXPECT_NE(a.stateHash(), b.stateHash()); // tick count
+    b.tick();
+    ASSERT_EQ(a.stateHash(), b.stateHash());
+
+    act(a, 0, CharacterCommand::move(Direction::Right));
+    b.tick();
+    EXPECT_NE(a.stateHash(), b.stateHash()); // position
+
+    GameRules otherSeed;
+    otherSeed.seed = 1;
+    EXPECT_NE(GameEngine(openGrid()).stateHash(), GameEngine(openGrid(), otherSeed).stateHash());
+}

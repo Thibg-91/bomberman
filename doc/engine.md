@@ -29,6 +29,7 @@ Une action qui échoue (mur, pas de bombe à pousser, limite de bombes atteinte)
   - `submitCommand(id, command)` : point d'entrée du clavier (et demain d'un pair réseau), une commande par frame.
   - `setController(id, controller)` : confie un joueur à un `PlayerController` (les bots, voir [bot.md](bot.md)). Le moteur lui demande sa commande **à chaque tick où le joueur est prêt**, ce qui garde la partie indépendante du framerate ; le joueur ignore alors `submitCommand`. Dans les deux cas la commande passe par la même exécution (`execute`) : un bot n'a aucun pouvoir de plus qu'un joueur au clavier.
   - `advance(realSeconds)` joue les ticks couverts par le temps réel ; `tick()` joue exactement un tick (tests).
+  - `setCommandRecording(true)` / `takeExecutedCommands()` : enregistre chaque commande remise à un joueur prêt (tick, joueur, commande) ; les rejouer tick par tick sur un autre moteur identique reproduit la partie (multijoueur, voir [network.md](network.md)). `stateHash()` donne une empreinte de tout l'état pour vérifier que deux moteurs sont restés identiques.
   - `takeEvents()` renvoie les `GameEvent` survenus (`PlayerTurned`, `PlayerMoved`, `BombPlaced`, `BombPushed`, `Explosion`, `PlayerKilled`, `UpgradeSpawned`, `UpgradeCollected`, `UpgradeDestroyed`, horodatés par tick) : le rendu (animation de pose, reconstruction de la grille après une explosion) réagit à ces événements sans scruter l'état.
 
 ## Déroulement d'un tick
@@ -52,6 +53,6 @@ Chaque frame : lecture du clavier → `submitCommand` → `advance(dt)` (les bot
 
 - Fin de partie : `MatchReferee` (même bibliothèque) dit quand la partie est finie, qui a gagné, et accélère la partie quand le joueur est mort ; voir [end_of_match.md](end_of_match.md).
 - IA : faite, voir [bot.md](bot.md) (un `Bot` par adversaire via `setController`).
-- Multijoueur local : `addPlayer()` pour chaque participant, une source de commandes par `PlayerId` (déjà prévu, cadenassé, dans le menu : [menu.md](menu.md)).
-- Réseau : les commandes horodatées par tick et la simulation déterministe permettent un lockstep ; les événements peuvent servir à la synchronisation de l'état.
+- Multijoueur local (même clavier) : `addPlayer()` pour chaque participant, une source de commandes par `PlayerId`.
+- Réseau : fait, en lockstep piloté par l'hôte (commandes enregistrées puis rejouées par les clients, empreinte de l'état) : voir [network.md](network.md). Le projet est compilé avec `-ffp-contract=off` pour que les flottants de la simulation soient identiques sur toutes les machines.
 - Bonus : fait, voir [upgrade.md](upgrade.md). Les délais d'action pourraient devenir eux aussi des stats par joueur (bonus de vitesse).

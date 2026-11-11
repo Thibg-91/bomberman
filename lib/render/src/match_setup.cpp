@@ -19,7 +19,36 @@ int indexOf(CharacterModel model)
 
 void MatchSetup::moveFocus(int step) noexcept
 {
-    focus = static_cast<Row>(wrap(static_cast<int>(focus), step, RowCount));
+    if (step == 0)
+        return;
+    const int direction = step > 0 ? 1 : -1;
+    for (int moved = 0; moved < (step > 0 ? step : -step); ++moved)
+    {
+        int row = static_cast<int>(focus);
+        for (int k = 0; k < RowCount; ++k) // Mode is always active: this ends
+        {
+            row = wrap(row, direction, RowCount);
+            if (isRowActive(static_cast<Row>(row)))
+                break;
+        }
+        focus = static_cast<Row>(row);
+    }
+}
+
+bool MatchSetup::isRowActive(Row row) const noexcept
+{
+    switch (row)
+    {
+    case Row::Mode:
+    case Row::Pirate:
+        return true;
+    case Row::Map:
+        return mode != GameMode::Join;
+    case Row::Difficulty:
+    case Row::Opponents:
+        break;
+    }
+    return mode == GameMode::VersusComputer;
 }
 
 void MatchSetup::change(int step) noexcept
@@ -46,7 +75,7 @@ void MatchSetup::change(int step) noexcept
 
 bool MatchSetup::canStart() const noexcept
 {
-    return mode == GameMode::VersusComputer && map >= 0 && map < mapCount;
+    return mode == GameMode::Join || (map >= 0 && map < mapCount);
 }
 
 int MatchSetup::wrap(int value, int step, int count) noexcept

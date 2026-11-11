@@ -25,9 +25,11 @@ Purement logique, testé sans fenêtre. À chaque frame, `exe/main.cpp` lui dema
 - **Spectating** : tu es mort mais il reste au moins deux adversaires : la partie continue **4 fois plus vite** (`SpectatorSpeed`) jusqu'au dernier survivant, au plus 30 s réelles (`SpectatorTimeLimit`), sinon égalité ;
 - **Over** : il reste un pirate (le gagnant) ou aucun (égalité) ; le moteur est figé (`gameSeconds()` renvoie 0), les animations (feu, mort) continuent.
 
+Le verdict est pris **tick par tick** à partir des événements `PlayerKilled` de la frame (`update(engine, dt, events)`) : la partie est finie au premier tick où il reste au plus un pirate, même si un autre meurt quelques ticks plus tard dans la même frame. En réseau, l'arbitre est créé avec `SpectatorRule::RealTime` : un joueur mort regarde la suite à vitesse normale, sans limite de temps (les autres sont des humains). Voir [network.md](network.md).
+
 ## Écran « GAME OVER » (`GameOverRenderer`)
 
-Une fois la partie terminée, la dernière animation de mort se joue (1,3 s), puis l'écran s'affiche `Duration` = 3 s, puis le menu revient. Il est dessiné par-dessus le plateau figé, dans un espace de 1600x900 (`viewFor()`) :
+Une fois la partie terminée, la dernière animation de mort se joue (1,3 s), puis l'écran s'affiche `Duration` = 3 s, puis le menu revient (la salle d'attente en réseau). Il est dessiné par-dessus le plateau figé, dans un espace de 1600x900 (`viewFor()`) :
 
 - le plateau s'assombrit (0 – 0,4 s) ;
 - un pavillon noir à tibias croisés tombe du haut (0,05 – 0,5 s) et ondule ;
@@ -35,4 +37,4 @@ Une fois la partie terminée, la dernière animation de mort se joue (1,3 s), pu
 - sous un projecteur, le coffre ouvert débordant d'or surgit en rebondissant (0,55 s), le gagnant debout dans les pièces, couronné, qui sautille ; une tête de mort le remplace en cas d'égalité ;
 - pour une victoire, une pluie de pièces d'or.
 
-`MatchOutcome` : `Victory` (tu es le dernier), `Defeat` (un adversaire l'est), `Draw` (personne).
+`MatchOutcome` : `Victory` (tu es le dernier), `Defeat` (un adversaire l'est), `Draw` (personne). En réseau, chaque ordinateur affiche le verdict de son propre joueur ; le gagnant apparaît avec la couleur de sa place.
