@@ -76,13 +76,10 @@ bool Character::move(Direction direction, const Grid& grid, const std::vector<Po
     if (isMoving())
         return false;
 
-    // First press on a new direction: just turn.
-    if (direction != m_facing)
-    {
-        m_facing = direction;
-        return false;
-    }
-
+    // The character always faces where it was asked to go, and steps there
+    // at once when it can; towards a blocked cell it only turns (e.g. to
+    // face a bomb to push).
+    m_facing = direction;
     const Position target = step(m_position, direction);
     if (!grid.isWalkable(target) || std::find(obstacles.begin(), obstacles.end(), target) != obstacles.end())
         return false;

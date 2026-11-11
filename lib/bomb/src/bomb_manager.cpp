@@ -1,7 +1,7 @@
 #include "bomb_manager.h"
 
 #include <algorithm>
-#include <array>
+#include <cstddef>
 
 namespace Bomberman
 {
@@ -36,45 +36,62 @@ int BombManager::countActiveBombs(int ownerId) const noexcept
     }));
 }
 
-bool BombManager::placeBomb(Position position, const Grid& grid, int ownerId, int maxActiveBombs)
+bool BombManager::placeBomb(Position position, const Grid& grid, int ownerId, int maxActiveBombs, int blastRadius)
 {
     if (!grid.isWalkable(position) || hasBombAt(position) || countActiveBombs(ownerId) >= maxActiveBombs)
         return false;
 
-    m_bombs.emplace_back(position, Bomb::DefaultFuseDuration, Bomb::DefaultBlastRadius, ownerId);
+    m_bombs.emplace_back(position, Bomb::DefaultFuseDuration, blastRadius, ownerId);
     return true;
 }
 
-bool BombManager::pushBombAt(Position position, Direction direction, const Grid& grid, int distance) noexcept
+std::optional<Position> BombManager::pushBombAt(Position position, Direction direction, const Grid& grid,
+                                                int distance, const std::vector<Position>& obstacles)
 {
     const auto it = std::find_if(m_bombs.begin(), m_bombs.end(),
                                   [position](const Bomb& bomb) { return bomb.getPosition() == position; });
     if (it == m_bombs.end())
-        return false;
+        return std::nullopt;
 
+    // Slide cell by cell, stopping before the first blocked one.
     Position target = position;
     for (int i = 0; i < distance; ++i)
-        target = step(target, direction);
+    {
+        const Position next = step(target, direction);
+        if (!grid.isWalkable(next) || hasBombAt(next)
+            || std::find(obstacles.begin(), obstacles.end(), next) != obstacles.end())
+            break;
+        target = next;
+    }
 
-    if (!grid.isWalkable(target) || hasBombAt(target))
-        return false;
+    if (target == position)
+        return std::nullopt;
 
     it->setPosition(target);
-    return true;
+    return target;
 }
 
-std::vector<Position> BombManager::update(float deltaSeconds, Grid& grid)
+std::vector<Position> BombManager::update(float deltaSeconds, Grid& grid, std::vector<Position>* destroyedBlocks,
+                                          std::vector<Blast>* blasts)
 {
     std::vector<Position> hitCells;
 
+    // Bombs explode one after the other: a block destroyed by one no longer
+    // stops the next one.
     for (Bomb& bomb : m_bombs)
     {
         if (bomb.hasExploded())
             continue;
 
         bomb.update(deltaSeconds);
-        if (bomb.hasExploded())
-            explode(bomb.getPosition(), bomb.getBlastRadius(), grid, hitCells);
+        if (!bomb.hasExploded())
+            continue;
+
+        const Blast blast = explode(bomb.getPosition(), bomb.getBlastRadius(), grid, destroyedBlocks);
+        const std::vector<Position> cells = blast.cells();
+        hitCells.insert(hitCells.end(), cells.begin(), cells.end());
+        if (blasts)
+            blasts->push_back(blast);
     }
 
     m_bombs.erase(std::remove_if(m_bombs.begin(), m_bombs.end(),
@@ -87,34 +104,24 @@ std::vector<Position> BombManager::update(float deltaSeconds, Grid& grid)
 // =========================
 // Private Methods
 // =========================
-void BombManager::explode(Position center, int blastRadius, Grid& grid, std::vector<Position>& hitCells) const
+Blast BombManager::explode(Position center, int blastRadius, Grid& grid, std::vector<Position>* destroyedBlocks)
 {
-    hitCells.push_back(center);
+    const Blast blast = Blast::compute(center, blastRadius, grid);
 
-    constexpr std::array<Direction, 4> arms = {Direction::Up, Direction::Down, Direction::Left, Direction::Right};
-    for (Direction direction : arms)
+    // Only the last cell of an arm can be a destructible block.
+    for (std::size_t arm = 0; arm < Blast::Directions.size(); ++arm)
     {
+        if (blast.reach[arm] == 0)
+            continue;
         Position cell = center;
-        for (int i = 0; i < blastRadius; ++i)
-        {
-            cell = step(cell, direction);
-            if (!grid.isInside(cell))
-                break;
+        for (int i = 0; i < blast.reach[arm]; ++i)
+            cell = step(cell, Blast::Directions[arm]);
 
-            Tile& tile = grid.getTile(cell);
-            if (tile.blocksExplosion())
-            {
-                if (tile.isDestructible())
-                {
-                    tile.destroy();
-                    hitCells.push_back(cell);
-                }
-                break;
-            }
-
-            hitCells.push_back(cell);
-        }
+        Tile& tile = grid.getTile(cell);
+        if (tile.destroy() && destroyedBlocks)
+            destroyedBlocks->push_back(cell);
     }
+    return blast;
 }
 
 } // namespace Bomberman
