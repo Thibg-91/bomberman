@@ -7,6 +7,7 @@
 
 #include "character.h"
 #include "map_theme.h"
+#include "menu_art.h"
 #include "mesh.h"
 
 namespace Bomberman
@@ -15,30 +16,19 @@ namespace Bomberman
 namespace
 {
 
-constexpr float Pi = 3.14159265f;
+using namespace MenuArt;
 
 // Mock-up colors. Thin strokes are opaque (see CLAUDE.md): the mock-up's
 // translucent ink edges are replaced by the color they give over the deck.
-constexpr sf::Color Ink(28, 20, 13);
-constexpr sf::Color Gold(212, 169, 74);
-constexpr sf::Color GoldGlow(212, 169, 74, 89);
-constexpr sf::Color Deck(196, 144, 90);
-constexpr sf::Color Seam(70, 40, 18, 115);
 constexpr sf::Color Shadow(0, 0, 0, 64);
-constexpr sf::Color PanelFill(40, 22, 10, 82);
-constexpr sf::Color PanelFocusedFill(40, 22, 10, 140);
-constexpr sf::Color PanelEdge(95, 70, 44); // ink at 60 % over the deck
-constexpr sf::Color FrameEdge(63, 46, 28); // ink at 70 % over a panel
-constexpr sf::Color BadgeFill(42, 26, 13);
-constexpr sf::Color Bone(243, 234, 220);
 constexpr sf::Color Blade(217, 221, 227);
 constexpr sf::Color Grip(91, 57, 32);
 constexpr sf::Color SlotOn(196, 144, 90);
 constexpr sf::Color SlotOff(122, 86, 52);
 constexpr sf::Color DotOff(255, 255, 255, 89);
-constexpr sf::Color LaunchOff(109, 106, 99);
 constexpr sf::Color BandanaRed(195, 59, 59);
 constexpr sf::Color MapDimming(0, 0, 0, 102); // black at 40 %: the miniature at 60 % brightness
+constexpr sf::Color InactiveRow(0, 0, 0, 115); // rows the chosen mode does not use
 constexpr std::array<sf::Color, MatchSetup::DifficultyCount> DifficultyColors = {
     sf::Color(90, 166, 75), sf::Color(224, 138, 46), sf::Color(195, 59, 59)};
 
@@ -52,8 +42,8 @@ constexpr int MapSlots = 4;
 constexpr float MapX = 270.f;
 constexpr float MapStep = 320.f;
 constexpr float MapY = 500.f;
-constexpr float ModeX = 520.f;
-constexpr float ModeStep = 560.f;
+constexpr float ModeX = 420.f;
+constexpr float ModeStep = 400.f;
 constexpr float ModeY = 100.f;
 constexpr float DifficultyX = 270.f;
 constexpr float DifficultyStep = 210.f;
@@ -64,40 +54,10 @@ constexpr float OpponentsStep = 140.f;
 constexpr sf::Vector2f LaunchCenter{1460.f, 800.f};
 constexpr float LaunchRadius = 62.f;
 
-sf::Color dimmed(sf::Color color, float brightness)
-{
-    auto scale = [brightness](std::uint8_t c) {
-        return static_cast<std::uint8_t>(std::clamp(static_cast<float>(c) * brightness, 0.f, 255.f));
-    };
-    return sf::Color(scale(color.r), scale(color.g), scale(color.b), color.a);
-}
-
-void roundedRect(Mesh& mesh, float x, float y, float w, float h, float r, sf::Color fill)
-{
-    mesh.polygon(roundedRectPoints(x, y, w, h, r, 6), fill);
-}
-
-void roundedFrame(Mesh& mesh, float x, float y, float w, float h, float r, float width, sf::Color color)
-{
-    mesh.stroke(roundedRectPoints(x, y, w, h, r, 6), width, color);
-}
-
 // The frame around a choice: gold and thick when it is the selected one.
 void choiceFrame(Mesh& mesh, float x, float y, float w, float h, bool selected)
 {
     roundedFrame(mesh, x, y, w, h, 12.f, selected ? 8.f : 4.f, selected ? Gold : FrameEdge);
-}
-
-std::vector<sf::Vector2f> transformed(std::vector<sf::Vector2f> points, sf::Vector2f pivot, float angle)
-{
-    const float c = std::cos(angle);
-    const float s = std::sin(angle);
-    for (sf::Vector2f& p : points)
-    {
-        const sf::Vector2f d = p - pivot;
-        p = pivot + sf::Vector2f(d.x * c - d.y * s, d.x * s + d.y * c);
-    }
-    return points;
 }
 
 // A filled rounded rectangle with an ink outline, turned by angle around
@@ -105,7 +65,7 @@ std::vector<sf::Vector2f> transformed(std::vector<sf::Vector2f> points, sf::Vect
 void turnedRect(Mesh& mesh, float x, float y, float w, float h, float r, sf::Vector2f pivot, float angle,
                 sf::Color fill, float outline)
 {
-    const std::vector<sf::Vector2f> points = transformed(roundedRectPoints(x, y, w, h, r, 4), pivot, angle);
+    const std::vector<sf::Vector2f> points = turned(roundedRectPoints(x, y, w, h, r, 4), pivot, angle);
     mesh.polygon(points, fill);
     mesh.stroke(points, outline, Ink);
 }
@@ -167,19 +127,6 @@ void pennant(Mesh& mesh, int difficulty, sf::Vector2f c, float s, float brightne
               brightness);
 }
 
-// The local multiplayer padlock.
-void padlock(Mesh& mesh, sf::Vector2f c, float s)
-{
-    std::vector<sf::Vector2f> shackle = {{c.x - s * 0.22f, c.y}, {c.x - s * 0.22f, c.y - s * 0.18f}};
-    appendCurve(shackle, {c.x - s * 0.22f, c.y - s * 0.45f}, {c.x, c.y - s * 0.45f});
-    appendCurve(shackle, {c.x + s * 0.22f, c.y - s * 0.45f}, {c.x + s * 0.22f, c.y - s * 0.18f});
-    shackle.push_back({c.x + s * 0.22f, c.y});
-    mesh.polyline(shackle, s * 0.09f, Ink, true);
-    roundedRect(mesh, c.x - s * 0.32f, c.y - s * 0.04f, s * 0.64f, s * 0.5f, s * 0.08f, Gold);
-    roundedFrame(mesh, c.x - s * 0.32f, c.y - s * 0.04f, s * 0.64f, s * 0.5f, s * 0.08f, s * 0.06f, Ink);
-    mesh.circle({c.x, c.y + s * 0.18f}, s * 0.07f, Ink);
-}
-
 // The buccaneer's bandana (pirate badge), mock-up group
 // translate(c + (0, 8)) scale(.55) translate(-50 -50).
 void bandanaBadge(Mesh& mesh, sf::Vector2f c)
@@ -217,20 +164,6 @@ void badge(Mesh& mesh, sf::Vector2f c)
 {
     mesh.circle(c, 36.f, BadgeFill);
     mesh.ring(c, 36.f, 4.f, Gold);
-}
-
-void launchButton(Mesh& mesh, sf::Vector2f c, float r, bool enabled, float elapsed)
-{
-    const float scale = enabled ? 1.f + std::sin(elapsed * Pi * 2.f * MatchSetupRenderer::PulseFrequency) * 0.05f : 1.f;
-    const float radius = r * scale;
-    if (enabled)
-        mesh.circle(c, radius * 1.3f, GoldGlow);
-    mesh.circle(c, radius, enabled ? Gold : LaunchOff);
-    mesh.ring(c, radius, radius * 0.1f, Ink);
-    const std::vector<sf::Vector2f> play = {
-        {c.x - radius * 0.3f, c.y - radius * 0.45f}, {c.x - radius * 0.3f, c.y + radius * 0.45f}, {c.x + radius * 0.5f, c.y}};
-    mesh.polygon(play, Ink);
-    mesh.stroke(play, radius * 0.08f, Ink);
 }
 
 int indexOf(CharacterModel model)
@@ -308,9 +241,7 @@ void MatchSetupRenderer::update(const MatchSetup& setup, float deltaSeconds)
     Mesh front(m_front);
 
     // Deck planks.
-    decor.rect(0.f, 0.f, DesignSize.x, DesignSize.y, Deck);
-    for (float y = 60.f; y < DesignSize.y; y += 60.f)
-        decor.rect(0.f, y - 2.f, DesignSize.x, 3.f, Seam);
+    deckFloor(decor, DesignSize);
 
     // One panel per row, the focused one framed in gold.
     for (int i = 0; i < MatchSetup::RowCount; ++i)
@@ -336,25 +267,33 @@ void MatchSetupRenderer::update(const MatchSetup& setup, float deltaSeconds)
     place(CharacterModel::Revenant, {866.f, BottomY + 2.f}, 38.f, 1.f);
     place(CharacterModel::Revenant, {886.f, BottomY + 4.f}, 38.f, 1.f);
 
-    // Mode: the buccaneer against a skeleton, or two buccaneers under a
-    // padlock (local multiplayer, not playable yet).
+    // Mode: the buccaneer against a skeleton (solo), the captain's ship
+    // sending waves (host a network game), the spyglass looking for ships
+    // (join one).
     for (int i = 0; i < GameModeCount; ++i)
     {
-        const bool on = AllGameModes[static_cast<std::size_t>(i)] == setup.mode;
+        const GameMode mode = AllGameModes[static_cast<std::size_t>(i)];
+        const bool on = mode == setup.mode;
         const float b = on ? 1.f : DimmedBrightness;
         const float cx = ModeX + static_cast<float>(i) * ModeStep;
-        choiceFrame(decor, cx - 200.f, 45.f, 400.f, 110.f, on);
-        if (i == 0)
+        choiceFrame(decor, cx - 180.f, 45.f, 360.f, 110.f, on);
+        switch (mode)
         {
+        case GameMode::VersusComputer:
             place(CharacterModel::Buccaneer, {cx - 55.f, ModeY}, 90.f, b);
             swords(overlay, {cx, ModeY - 5.f}, 50.f, b);
             place(CharacterModel::Revenant, {cx + 55.f, ModeY}, 90.f, b);
-        }
-        else
-        {
-            place(CharacterModel::Buccaneer, {cx - 45.f, ModeY}, 90.f, b);
-            place(CharacterModel::Buccaneer, {cx + 45.f, ModeY}, 90.f, b, CharacterRenderer::paletteForPlayer(1));
-            padlock(overlay, {cx, ModeY + 25.f}, 55.f);
+            break;
+        case GameMode::Host:
+            ship(decor, {cx - 30.f, ModeY + 4.f}, 110.f, b);
+            place(CharacterModel::Buccaneer, {cx - 30.f, ModeY - 14.f}, 37.f, b);
+            crown(overlay, {cx - 30.f, ModeY - 41.f}, 7.f, b);
+            waves(overlay, {cx + 60.f, ModeY - 2.f}, 42.f, 0.f, dimmed(Gold, b), dimmed(Gold, b), false);
+            break;
+        case GameMode::Join:
+            spyglass(decor, {cx - 35.f, ModeY + 12.f}, 70.f, -20.f, b);
+            waves(decor, {cx + 90.f, ModeY - 2.f}, 42.f, 0.f, dimmed(Gold, b), dimmed(Gold, b), false);
+            break;
         }
     }
 
@@ -426,7 +365,17 @@ void MatchSetupRenderer::update(const MatchSetup& setup, float deltaSeconds)
             choiceFrame(overlay, cx - 62.f, 745.f, 124.f, 110.f, true);
     }
 
-    launchButton(front, LaunchCenter, LaunchRadius, m_launchEnabled, m_elapsed);
+    // Rows the chosen mode does not use are shaded (the focus skips them).
+    for (int i = 0; i < MatchSetup::RowCount; ++i)
+    {
+        const auto row = static_cast<MatchSetup::Row>(i);
+        if (setup.isRowActive(row))
+            continue;
+        const sf::FloatRect r = rowBounds(row);
+        roundedRect(front, r.position.x, r.position.y, r.size.x, r.size.y, 18.f, InactiveRow);
+    }
+
+    launchButton(front, LaunchCenter, LaunchRadius, m_launchEnabled, m_elapsed, PulseFrequency);
 
     // The chosen pirate, hopping, last.
     const float hop = -std::abs(std::sin(m_elapsed * Pi * HopFrequency)) * HopHeight;

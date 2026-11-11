@@ -14,13 +14,14 @@ namespace Bomberman
 // How the match is played.
 enum class GameMode
 {
-    VersusComputer,  // the keyboard player against computer-controlled pirates
-    LocalMultiplayer // several players on one keyboard: not implemented yet, shown locked
+    VersusComputer, // the keyboard player against computer-controlled pirates
+    Host,           // host a network game on the chosen map (waiting room, see doc/network.md)
+    Join            // join a network game hosted on the local network
 };
 
-inline constexpr int GameModeCount = 2;
-inline constexpr std::array<GameMode, GameModeCount> AllGameModes = {GameMode::VersusComputer,
-                                                                     GameMode::LocalMultiplayer};
+inline constexpr int GameModeCount = 3;
+inline constexpr std::array<GameMode, GameModeCount> AllGameModes = {GameMode::VersusComputer, GameMode::Host,
+                                                                     GameMode::Join};
 
 // What the launch menu sets up (validated mock-up "Préparer l'abordage",
 // layout "Le tableau de bord"): one row per setting, the keyboard moves
@@ -52,15 +53,20 @@ struct MatchSetup
     Row focus = Row::Pirate;
 
     // Focus on the next row (step 1, down) or the previous one (-1, up),
-    // wrapping around.
+    // wrapping around and skipping the rows the mode does not use.
     void moveFocus(int step) noexcept;
+
+    // Whether the mode uses row: the map is the host's when joining, the
+    // difficulty and the opponents only matter against the computer
+    // (network games are between humans only).
+    [[nodiscard]] bool isRowActive(Row row) const noexcept;
 
     // Changes the value of the focused row by step (left -1, right 1),
     // wrapping around.
     void change(int step) noexcept;
 
-    // Whether the launch button works: the mode is implemented and there is
-    // a map to play on.
+    // Whether the launch button works: there is a map to play on (joining
+    // needs none, the host chooses it).
     [[nodiscard]] bool canStart() const noexcept;
 
     // Index of value after moving by step in [0, count), wrapping around.

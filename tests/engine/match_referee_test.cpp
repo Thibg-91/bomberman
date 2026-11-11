@@ -131,3 +131,83 @@ TEST(MatchRefereeTest, AnOverMatchIsFrozenAndStaysOver)
     EXPECT_TRUE(referee.isOver());
     EXPECT_EQ(referee.getWinner(), 0);
 }
+
+TEST(MatchRefereeTest, InRealTimeTheDeadWatchAtNormalSpeedWithoutTimeLimit)
+{
+    GameEngine engine = engineWith({{1, 1}, {5, 5}, {5, 1}});
+    MatchReferee referee(0, MatchReferee::SpectatorRule::RealTime);
+    EXPECT_EQ(referee.getSpectatorRule(), MatchReferee::SpectatorRule::RealTime);
+    bombHere(engine, referee, 0);
+    ASSERT_EQ(referee.getPhase(), Phase::Spectating);
+
+    EXPECT_FLOAT_EQ(referee.gameSeconds(0.25f), 0.25f); // the other humans play on
+    for (int second = 0; second < 10 * static_cast<int>(MatchReferee::SpectatorTimeLimit); ++second)
+        referee.update(engine, 1.f);
+    EXPECT_EQ(referee.getPhase(), Phase::Spectating);
+
+    bombHere(engine, referee, 1);
+    EXPECT_TRUE(referee.isOver());
+    EXPECT_EQ(referee.getWinner(), 2);
+}
+
+namespace
+{
+
+// Three players far apart; player 0 drops a bomb where it stands at tick 0,
+// player 1 at tick 5 and player 2 at tick 8: they die at ticks 120, 125 and
+// 128. The match is decided at tick 125 (player 2 alone), whatever comes
+// after.
+GameEngine threeBombers(std::vector<Bomberman::GameEvent>& events, int ticks)
+{
+    GameEngine engine = engineWith({{1, 1}, {5, 5}, {5, 1}});
+    for (int tick = 0; tick < ticks; ++tick)
+    {
+        if (tick == 0 || tick == 5 || tick == 8)
+            engine.submitCommand(tick == 0 ? 0 : tick == 5 ? 1 : 2, CharacterCommand::placeBomb());
+        engine.tick();
+        for (Bomberman::GameEvent& event : engine.takeEvents())
+            events.push_back(std::move(event));
+    }
+    return engine;
+}
+
+} // namespace
+
+TEST(MatchRefereeTest, TheFirstDecisiveTickDecidesEvenWithinOneFrame)
+{
+    std::vector<Bomberman::GameEvent> events;
+    const GameEngine engine = threeBombers(events, 130); // one long frame
+    ASSERT_EQ(engine.countAlivePlayers(), 0);
+
+    MatchReferee referee(0, MatchReferee::SpectatorRule::RealTime);
+    referee.update(engine, 130.f / 60.f, events);
+
+    EXPECT_TRUE(referee.isOver());
+    EXPECT_EQ(referee.getWinner(), 2); // alone at tick 125, dead at 128 does not matter
+}
+
+TEST(MatchRefereeTest, TheVerdictDoesNotDependOnHowTicksAreGroupedInFrames)
+{
+    // Host-like frames of 7 ticks vs client-like frames of 1 tick.
+    for (const int frame : {1, 3, 7, 130})
+    {
+        GameEngine engine = engineWith({{1, 1}, {5, 5}, {5, 1}});
+        MatchReferee referee(1, MatchReferee::SpectatorRule::RealTime);
+        std::vector<Bomberman::GameEvent> frameEvents;
+        for (int tick = 0; tick < 130 && !referee.isOver(); ++tick)
+        {
+            if (tick == 0 || tick == 5 || tick == 8)
+                engine.submitCommand(tick == 0 ? 0 : tick == 5 ? 1 : 2, CharacterCommand::placeBomb());
+            engine.tick();
+            for (Bomberman::GameEvent& event : engine.takeEvents())
+                frameEvents.push_back(std::move(event));
+            if ((tick + 1) % frame == 0 || tick == 129)
+            {
+                referee.update(engine, static_cast<float>(frame) / 60.f, frameEvents);
+                frameEvents.clear();
+            }
+        }
+        EXPECT_TRUE(referee.isOver()) << "frames of " << frame;
+        EXPECT_EQ(referee.getWinner(), 2) << "frames of " << frame;
+    }
+}

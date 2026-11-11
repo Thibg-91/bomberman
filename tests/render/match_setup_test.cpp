@@ -170,24 +170,69 @@ TEST(MatchSetupTest, EveryRowWrapsAround)
 
     setup.focus = Row::Mode;
     setup.change(1);
-    EXPECT_EQ(setup.mode, GameMode::LocalMultiplayer);
+    EXPECT_EQ(setup.mode, GameMode::Host);
+    setup.change(1);
+    EXPECT_EQ(setup.mode, GameMode::Join);
     setup.change(1);
     EXPECT_EQ(setup.mode, GameMode::VersusComputer);
+    setup.change(-1);
+    EXPECT_EQ(setup.mode, GameMode::Join);
 }
 
-TEST(MatchSetupTest, OnlyTheComputerModeCanStartAndItNeedsAMap)
+TEST(MatchSetupTest, PlayingOrHostingNeedsAMapJoiningDoesNot)
 {
     MatchSetup setup = setupWithMaps();
     EXPECT_TRUE(setup.canStart());
-
-    setup.mode = GameMode::LocalMultiplayer;
-    EXPECT_FALSE(setup.canStart());
+    setup.mode = GameMode::Host;
+    EXPECT_TRUE(setup.canStart());
 
     MatchSetup noMap = setupWithMaps(0);
     EXPECT_FALSE(noMap.canStart());
+    noMap.mode = GameMode::Host;
+    EXPECT_FALSE(noMap.canStart());
+    noMap.mode = GameMode::Join; // the host chooses the map
+    EXPECT_TRUE(noMap.canStart());
     noMap.focus = Row::Map;
     noMap.change(1);
     EXPECT_EQ(noMap.map, 0);
+}
+
+TEST(MatchSetupTest, NetworkModesOnlyUseTheirRows)
+{
+    MatchSetup setup = setupWithMaps();
+    for (int i = 0; i < MatchSetup::RowCount; ++i)
+        EXPECT_TRUE(setup.isRowActive(static_cast<Row>(i)));
+
+    setup.mode = GameMode::Host; // humans only: no difficulty, no opponents
+    EXPECT_TRUE(setup.isRowActive(Row::Map));
+    EXPECT_FALSE(setup.isRowActive(Row::Difficulty));
+    EXPECT_FALSE(setup.isRowActive(Row::Opponents));
+
+    setup.mode = GameMode::Join; // the host's map
+    EXPECT_TRUE(setup.isRowActive(Row::Mode));
+    EXPECT_TRUE(setup.isRowActive(Row::Pirate));
+    EXPECT_FALSE(setup.isRowActive(Row::Map));
+}
+
+TEST(MatchSetupTest, TheFocusSkipsTheRowsTheModeDoesNotUse)
+{
+    MatchSetup setup = setupWithMaps();
+    setup.mode = GameMode::Join;
+    setup.focus = Row::Mode;
+    setup.moveFocus(1);
+    EXPECT_EQ(setup.focus, Row::Pirate);
+    setup.moveFocus(1);
+    EXPECT_EQ(setup.focus, Row::Mode); // wraps over map, difficulty and opponents
+    setup.moveFocus(-1);
+    EXPECT_EQ(setup.focus, Row::Pirate);
+
+    setup.mode = GameMode::Host;
+    setup.moveFocus(1);
+    EXPECT_EQ(setup.focus, Row::Map);
+    setup.moveFocus(1);
+    EXPECT_EQ(setup.focus, Row::Mode);
+    setup.moveFocus(-2);
+    EXPECT_EQ(setup.focus, Row::Pirate);
 }
 
 TEST(MatchSetupTest, OpponentsAreTheRestOfTheCrewInOrder)
@@ -328,9 +373,9 @@ TEST(MatchSetupRendererTest, TheLaunchButtonIsOffWhenTheSetupCannotStart)
     menu.update(setup);
     EXPECT_TRUE(menu.isLaunchEnabled());
 
-    setup.mode = GameMode::LocalMultiplayer;
+    setup.mode = GameMode::Join;
     menu.update(setup);
-    EXPECT_FALSE(menu.isLaunchEnabled());
+    EXPECT_TRUE(menu.isLaunchEnabled());
 
     MatchSetupRenderer empty;
     empty.update(MatchSetup{});
@@ -347,6 +392,6 @@ TEST(MatchSetupRendererTest, OpponentSlotsShowOneTwoAndThreeSkeletons)
     // 2 on the row badge, 1 in the solo icon, 1 in the pirate row and
     // 1 + 2 + 3 in the opponent slots.
     EXPECT_EQ(countModel(menu, CharacterModel::Revenant), 2 + 1 + 1 + 6);
-    // Solo icon, the two multiplayer icons, the pirate row.
-    EXPECT_EQ(countModel(menu, CharacterModel::Buccaneer), 1 + 2 + 1);
+    // Solo icon, the captain on the host icon's ship, the pirate row.
+    EXPECT_EQ(countModel(menu, CharacterModel::Buccaneer), 1 + 1 + 1);
 }

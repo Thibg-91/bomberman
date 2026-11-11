@@ -1,6 +1,7 @@
 #include "game_engine.h"
 
 #include <algorithm>
+#include <cstring>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -148,6 +149,112 @@ std::vector<GameEvent> GameEngine::takeEvents()
     return std::exchange(m_events, {});
 }
 
+void GameEngine::setCommandRecording(bool enabled) noexcept
+{
+    m_recordCommands = enabled;
+    if (!enabled)
+        m_executedCommands.clear();
+}
+
+std::vector<ExecutedCommand> GameEngine::takeExecutedCommands()
+{
+    return std::exchange(m_executedCommands, {});
+}
+
+namespace
+{
+
+// FNV-1a, 64 bits: simple, fast and identical on every platform.
+class StateHasher
+{
+public:
+    void add(std::uint64_t value) noexcept
+    {
+        for (int i = 0; i < 8; ++i)
+        {
+            m_hash ^= (value >> (8 * i)) & 0xFFu;
+            m_hash *= 0x100000001B3ull;
+        }
+    }
+
+    void add(int value) noexcept
+    {
+        add(static_cast<std::uint64_t>(static_cast<std::int64_t>(value)));
+    }
+
+    void add(bool value) noexcept
+    {
+        add(static_cast<std::uint64_t>(value ? 1 : 0));
+    }
+
+    // The exact bits: two engines that drifted by one rounding differ.
+    void add(float value) noexcept
+    {
+        std::uint32_t bits = 0;
+        std::memcpy(&bits, &value, sizeof bits);
+        add(static_cast<std::uint64_t>(bits));
+    }
+
+    void add(Position position) noexcept
+    {
+        add(position.x);
+        add(position.y);
+    }
+
+    [[nodiscard]] std::uint64_t value() const noexcept
+    {
+        return m_hash;
+    }
+
+private:
+    std::uint64_t m_hash = 0xCBF29CE484222325ull;
+};
+
+} // namespace
+
+std::uint64_t GameEngine::stateHash() const noexcept
+{
+    StateHasher hash;
+    hash.add(m_tick);
+    hash.add(m_random.getState());
+
+    hash.add(m_grid.getWidth());
+    hash.add(m_grid.getHeight());
+    for (int y = 0; y < m_grid.getHeight(); ++y)
+        for (int x = 0; x < m_grid.getWidth(); ++x)
+            hash.add(static_cast<int>(m_grid.getTile({x, y}).getType()));
+
+    for (const Player& p : m_players)
+    {
+        const Character& c = p.character;
+        hash.add(p.id);
+        hash.add(c.getPosition());
+        hash.add(c.getPreviousPosition());
+        hash.add(static_cast<int>(c.getFacing()));
+        hash.add(c.isAlive());
+        hash.add(c.getMoveProgress());
+        hash.add(p.cooldownTicks);
+        hash.add(p.stats.maxBombs);
+        hash.add(p.stats.pushDistance);
+        hash.add(p.stats.blastRadius);
+    }
+
+    for (const Bomb& bomb : m_bombManager.getBombs())
+    {
+        hash.add(bomb.getPosition());
+        hash.add(bomb.getOwnerId());
+        hash.add(bomb.getBlastRadius());
+        hash.add(bomb.getTimeRemaining());
+    }
+
+    for (const Upgrade& upgrade : m_upgradeManager.getUpgrades())
+    {
+        hash.add(upgrade.position);
+        hash.add(indexOf(upgrade.type));
+    }
+    return hash.value();
+}
+
 // =========================
 // Private Methods
 // =========================
@@ -173,13 +280,14 @@ void GameEngine::runTick()
     {
         if (!isReady(p))
             continue;
+        std::optional<CharacterCommand> command = p.pendingCommand;
         if (p.controller)
-        {
-            if (const std::optional<CharacterCommand> command = p.controller->decide(*this, p.id))
-                execute(p, *command);
-        }
-        else if (p.pendingCommand)
-            execute(p, *p.pendingCommand);
+            command = p.controller->decide(*this, p.id);
+        if (!command)
+            continue;
+        if (m_recordCommands)
+            m_executedCommands.push_back(ExecutedCommand{m_tick, p.id, *command});
+        execute(p, *command);
     }
 
     // 2. Upgrades under the players' feet.

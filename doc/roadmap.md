@@ -129,6 +129,6 @@ Objectif : le cœur du gameplay Bomberman.
 
 ## Hors scope actuel (backlog, non planifié)
 
-- [ ] Multijoueur réseau (`lib/network/`) — non demandé, à ne pas développer avant décision explicite
+- [x] Multijoueur réseau local (`lib/network/`), 2 à 4 joueurs sur le même Wi-Fi : voir [network.md](network.md)
 - [ ] Manettes/gamepad
 - [ ] Remapping des touches par le joueur en jeu
